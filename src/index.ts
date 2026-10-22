@@ -1,38 +1,45 @@
-import express, { Request, Response } from "express";
+import express from "express";
 import cors from "cors";
-import { Pool } from "pg";
 import dotenv from "dotenv";
+
+import { initDb } from "./db/pool.js";
+import healthRoutes from "./routes/healthRoutes.js";
+import projectRoutes from "./routes/projectRoutes.js";
+import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 3001;
+const port = process.env["PORT"] ?? 3001;
 
-// Middleware
+// ─── Core Middleware ──────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
 
-// Initialize PostgreSQL Connection Pool
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-});
+// ─── Routes ───────────────────────────────────────────────────────────────────
+app.use("/health", healthRoutes);
+app.use("/api/projects", projectRoutes);
 
-// Test Database Connection
-pool.connect((err, client, release) => {
-    if (err) {
-        console.error("❌ Error connecting to Neon PostgreSQL:", err.stack);
-    } else {
-        console.log("✅ Express successfully connected to shared Neon Database!");
-        release();
-    }
-});
+// ─── Fallback Middleware ──────────────────────────────────────────────────────
+app.use(notFoundHandler);
+app.use(errorHandler);
 
-// Health Check Endpoint
-app.get("/health", (req: Request, res: Response) => {
-    res.status(200).json({ status: "API is running", database: "Connected" });
-});
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+async function boot(): Promise<void> {
+  try {
+    // Ensure startup_profiles table exists before accepting traffic
+    await initDb();
 
-// Start Server
-app.listen(port, () => {
-    console.log(`🚀 forgeCapita API listening at http://localhost:${port}`);
-});
+    app.listen(port, () => {
+      console.log(`🚀 forgeCapita API listening at http://localhost:${port}`);
+    });
+  } catch (err) {
+    console.error("❌ Failed to initialise database:", err);
+    process.exit(1);
+  }
+}
+
+boot();
+
+// Export app for supertest (tests import this without calling listen)
+export default app;
