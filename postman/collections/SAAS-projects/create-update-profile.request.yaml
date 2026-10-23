@@ -1,0 +1,23 @@
+$kind: http-request
+url: "{{base_url}}/api/projects/profile"
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \      \"projectId\": \"0x71C8416760895B0BA7999DA20B2F2A832A850001\",\r
+
+    \      \"name\": \"CloudForge AI\",\r
+
+    \      \"description\": \"Decentralized GPU orchestration and AI inference marketplace for autonomous web3 agents.\",\r
+
+    \      \"logoUrl\": \"https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&h=200&fit=crop\",\r
+
+    \      \"pitchDeckUrl\": \"https://forgecapita.io/decks/cloudforge-pitch.pdf\",\r
+
+    \      \"founderBio\": \"Former lead engineer at distributed systems lab with 7+ years building high-throughput microservices.\",\r
+
+    \      \"websiteUrl\": \"https://cloudforge.ai\"\r
+
+    \    }"
+order: 1726

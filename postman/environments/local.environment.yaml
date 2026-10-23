@@ -1,0 +1,5 @@
+name: local
+values:
+  - key: base_url
+    value: 'http://localhost:3001'
+color: 240

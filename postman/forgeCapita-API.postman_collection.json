@@ -1,0 +1,104 @@
+{
+  "info": {
+    "_postman_id": "c1f78e45-5683-4a11-a83d-e7d6928e08cf",
+    "name": "ForgeCapita API",
+    "description": "API collection for ForgeCapita Web3 crowdfunding & SaaS equity off-chain metadata service.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3001",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Check Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Checks server uptime and Neon PostgreSQL pool connection status."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Projects",
+      "item": [
+        {
+          "name": "Create or Update Profile",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": \"0x71C8416760895B0BA7999DA20B2F2A832A850001\",\n  \"name\": \"CloudForge AI\",\n  \"description\": \"Decentralized GPU orchestration and AI inference marketplace for autonomous web3 agents.\",\n  \"logoUrl\": \"https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&h=200&fit=crop\",\n  \"pitchDeckUrl\": \"https://forgecapita.io/decks/cloudforge-pitch.pdf\",\n  \"founderBio\": \"Former lead engineer at distributed systems lab with 7+ years building high-throughput microservices.\",\n  \"websiteUrl\": \"https://cloudforge.ai\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/projects/profile",
+              "host": ["{{base_url}}"],
+              "path": ["api", "projects", "profile"]
+            },
+            "description": "Upserts off-chain startup metadata (logo, pitch deck, bio, etc.) for a project."
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Projects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/projects",
+              "host": ["{{base_url}}"],
+              "path": ["api", "projects"]
+            },
+            "description": "Retrieves all projects with merged off-chain metadata and on-chain metrics."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Project by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/projects/:projectId",
+              "host": ["{{base_url}}"],
+              "path": ["api", "projects", ":projectId"],
+              "variable": [
+                {
+                  "key": "projectId",
+                  "value": "0x71C8416760895B0BA7999DA20B2F2A832A850001",
+                  "description": "Ethereum contract address / project ID"
+                }
+              ]
+            },
+            "description": "Fetches a single project joined with off-chain startup profile."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

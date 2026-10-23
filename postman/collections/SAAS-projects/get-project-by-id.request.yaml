@@ -1,0 +1,4 @@
+$kind: http-request
+url: "{{base_url}}/api/projects/0x71C8416760895B0BA7999DA20B2F2A832A850001"
+method: GET
+order: 2500
