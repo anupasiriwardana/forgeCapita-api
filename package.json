@@ -13,7 +13,9 @@
   "dependencies": {
     "cors": "^2.8.6",
     "dotenv": "^18.0.8",
+    "ethers": "^6.17.0",
     "express": "^5.3.0",
+    "node-cron": "^4.6.0",
     "pg": "^8.23.1"
   },
   "devDependencies": {
@@ -32,7 +34,9 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "extensionsToTreatAsEsm": [".ts"],
+    "extensionsToTreatAsEsm": [
+      ".ts"
+    ],
     "moduleNameMapper": {
       "^(\\.{1,2}/.+)\\.js$": "$1"
     },
@@ -41,10 +45,15 @@
         "@swc/jest",
         {
           "jsc": {
-            "parser": { "syntax": "typescript", "decorators": false },
+            "parser": {
+              "syntax": "typescript",
+              "decorators": false
+            },
             "target": "es2022"
           },
-          "module": { "type": "es6" }
+          "module": {
+            "type": "es6"
+          }
         }
       ]
     }

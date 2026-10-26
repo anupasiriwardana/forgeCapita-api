@@ -36,6 +36,14 @@ export interface CreateProfileBody {
   pitchDeckUrl?: string;
   founderBio?: string;
   websiteUrl?: string;
+  shadowWallet?: string;
+}
+
+export interface PaymasterRequestBody {
+  escrowAddress: string;
+  milestoneIndex: number;
+  chainId: number;
+  gasDebt: string; // Passed as a string to handle BigInt safety
 }
 
 // ─── Standard API Response ───────────────────────────────────────────────────
@@ -46,3 +54,5 @@ export interface ApiResponse<T = unknown> {
   data?: T;
   error?: string;
 }
+
+

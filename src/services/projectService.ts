@@ -10,21 +10,22 @@ import type {
 export async function upsertProfile(
   body: CreateProfileBody
 ): Promise<StartupProfileRow> {
-  const { projectId, name, description, logoUrl, pitchDeckUrl, founderBio, websiteUrl } =
+  const { projectId, name, description, logoUrl, pitchDeckUrl, founderBio, websiteUrl, shadowWallet } =
     body;
 
   const sql = `
     INSERT INTO startup_profiles
-      (project_id, name, description, logo_url, pitch_deck_url, founder_bio, website_url)
+      (project_id, name, description, logo_url, pitch_deck_url, founder_bio, website_url, shadow_wallet)
     VALUES
-      ($1, $2, $3, $4, $5, $6, $7)
+      ($1, $2, $3, $4, $5, $6, $7, $8)
     ON CONFLICT (project_id) DO UPDATE SET
       name           = EXCLUDED.name,
       description    = EXCLUDED.description,
       logo_url       = EXCLUDED.logo_url,
       pitch_deck_url = EXCLUDED.pitch_deck_url,
       founder_bio    = EXCLUDED.founder_bio,
-      website_url    = EXCLUDED.website_url
+      website_url    = EXCLUDED.website_url,
+      shadow_wallet  = EXCLUDED.shadow_wallet
     RETURNING *;
   `;
 
@@ -36,6 +37,7 @@ export async function upsertProfile(
     pitchDeckUrl ?? null,
     founderBio ?? null,
     websiteUrl ?? null,
+    shadowWallet ?? null
   ]);
 
   // result.rows[0] is guaranteed because RETURNING * always returns the upserted row

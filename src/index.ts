@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import { initDb } from "./db/pool.js";
 import healthRoutes from "./routes/healthRoutes.js";
 import projectRoutes from "./routes/projectRoutes.js";
+import paymasterRoutes from "./routes/paymasterRoutes.js";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 
 dotenv.config();
@@ -19,6 +20,7 @@ app.use(express.json());
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use("/health", healthRoutes);
 app.use("/api/projects", projectRoutes);
+app.use("/api/paymaster", paymasterRoutes);
 
 // ─── Fallback Middleware ──────────────────────────────────────────────────────
 app.use(notFoundHandler);

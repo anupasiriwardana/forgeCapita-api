@@ -21,14 +21,16 @@ export const pool = new Pool({
 export async function initDb(): Promise<void> {
   const sql = `
     CREATE TABLE IF NOT EXISTS startup_profiles (
-      project_id   VARCHAR      PRIMARY KEY,
-      name         VARCHAR      NOT NULL,
-      description  TEXT         NOT NULL,
-      logo_url     VARCHAR,
-      pitch_deck_url VARCHAR,
-      founder_bio  TEXT,
-      website_url  VARCHAR,
-      created_at   TIMESTAMP    NOT NULL DEFAULT NOW()
+      project_id      VARCHAR      PRIMARY KEY,
+      name            VARCHAR      NOT NULL,
+      description     TEXT         NOT NULL,
+      logo_url        VARCHAR,
+      pitch_deck_url  VARCHAR,
+      founder_bio     TEXT,
+      website_url     VARCHAR,
+      shadow_wallet   VARCHAR,
+      kyc_verified    BOOLEAN      DEFAULT false,
+      created_at      TIMESTAMP    NOT NULL DEFAULT NOW()
     );
   `;
 
