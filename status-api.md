@@ -4,7 +4,7 @@
 **Runtime:** Node.js 22 / Express.js / TypeScript  
 **Database:** Neon PostgreSQL (Shared with Ponder Indexer)  
 **Port:** 3001  
-**Last Updated:** Current Sprint  
+**Last Updated:** 2026-10-28 (plan revised; code unchanged since the previous report)  
 
 ---
 
@@ -39,7 +39,7 @@ Currently, basic server setup, PostgreSQL pool connections, startup profile upse
 - **Status:** **CRITICAL BLOCKER** 🚨
 - **Problem:** `src/routes/paymasterRoutes.ts` is completely empty (0 bytes). However, `src/index.ts` imports it (`import paymasterRoutes from "./routes/paymasterRoutes.js"`) and attempts to mount it via `app.use("/api/paymaster", paymasterRoutes)`.
 - **Impact:** Any attempt to start the server or call `/api/paymaster` fails or throws runtime routing errors.
-- **Remedy Required:** Export an Express router from `paymasterRoutes.ts` wiring `POST /` to `signMilestoneExecution` from `paymasterController.ts`.
+- **Remedy (revised 2026-10-28):** Do not repair the treasury-signature Paymaster. Remove the import and mount (backlog API-01); it is replaced by the gasless relayer (API-70 to API-80) once contracts v2 exist.
 
 ### B. Missing `status` Column in `startup_profiles`
 - **Status:** **HIGH PRIORITY** ⚠️
@@ -87,11 +87,21 @@ Currently, basic server setup, PostgreSQL pool connections, startup profile upse
 
 ---
 
-## 5. Summary Checklist of Next Steps
+## 5. Plan revision (2026-10-28)
 
-1. [ ] Populate `src/routes/paymasterRoutes.ts` with valid Express router definitions.
-2. [ ] Add `status` column to `startup_profiles` table in `src/db/pool.ts`.
-3. [ ] Add missing environment variable definitions to `.env.example` and populate `.env`.
-4. [ ] Implement SIWE authentication middleware to protect project update endpoints.
-5. [ ] Complete Etherscan and BscScan API client integration in `auditService.ts` and initialize the cron in `src/index.ts`.
-6. [ ] Implement pre-launch project application (`/api/projects/apply`) and admin approval endpoints.
+The backlog was rewritten to a production-grade plan. Key changes from what this report described:
+
+- **Accounts instead of wallet-only auth:** email + password with sessions, roles `investor / founder / staff / admin`, wallet linking, mandatory TOTP for staff and admin (API-11 to API-22). The SIWE-as-login idea is dropped.
+- **Gas model:** the treasury-signature Paymaster and the `gas_debt_records` table are dropped. Claim tokens, stake, vote and execute milestone become gasless through a relayer wallet with a gas oracle and a queue (API-70 to API-80). This needs contracts v2 (`backlog-contracts.md`). The API no longer holds the treasury key.
+- **Founder trust pipeline:** application state machine, manual KYC, "I agree" Revenue Share Agreement, GitHub/GitLab repo provisioning, public shadow wallet with approved changes (API-30 to API-40).
+- **Revenue integrity:** reconciliation including allow-listed ERC-20 tokens in USD with a tolerance, compliance state machine with a 14-day clock, Secret Shopper worker, freeze coupling (API-45 to API-55).
+- **Complaints and takeover workflow** (API-60 to API-63), staff/admin dashboards (API-81).
+- **Platform hardening:** migrations, validation, helmet / CORS / rate limits, structured logging, readiness, tests (API-01 to API-10, API-90 to API-95).
+
+## 6. Summary Checklist of Next Steps
+
+1. [ ] API-01 remove the broken Paymaster mount so the server boots cleanly.
+2. [ ] API-02 to API-10 hardening, migrations (API tables in schema `app`), pagination, readiness.
+3. [ ] `[USER-ACTION]` API-16 / API-17: email provider and admin bootstrap, then API-11 to API-22 accounts and roles.
+4. [ ] API-30 to API-40 application, KYC, agreement and repo workflow.
+5. [ ] After contracts v2 are deployed: API-70 to API-80 relayer.
