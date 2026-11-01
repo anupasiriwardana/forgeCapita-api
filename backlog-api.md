@@ -11,6 +11,8 @@ This backlog tracks the off-chain Express.js service (`forgecapita-api`): accoun
 
 Item IDs (`API-xx`) are referenced from `ROADMAP.md`. Plan revised 2026-10-28.
 
+> **Re-plan note (2026-11-01, user-approved):** the v2-first re-plan (indexer and frontend rebuilt against the deployed v2 contracts) causes NO API step changes. WS-01 (API-03 to API-10) continues as planned; v2 contract integration in the API (relayer, gas oracle) stays in WS-08.
+
 ## Decisions that shape this backlog
 
 - **Accounts:** email + password (argon2id), email verification, password reset, lockout, server-side sessions in httpOnly cookies with CSRF protection. A wallet is *linked* to an account by signing a message (Sign-In with Ethereum style); one wallet per account. SIWE is no longer the login method.

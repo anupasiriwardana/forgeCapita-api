@@ -6,7 +6,7 @@
 **Port:** 3001  
 **Last Updated:** 2026-11-01  
 
-**Current focus:** Step: WS-01.1 | State: awaiting-review | Updated: 2026-11-01  
+**Current focus:** Step: none (WS-01.1 reviewed and committed; next api step WS-01.2) | State: idle | Updated: 2026-11-01  
 
 ---
 
@@ -102,4 +102,5 @@ The backlog was rewritten to a production-grade plan. Key changes from what this
 
 ## Change log
 
+2026-11-01  re-plan  v2-first re-plan approved by the user; no API step changes (WS-01.2 onward unchanged); docs only  - verified by: not applicable (no code touched)
 2026-11-01  WS-01.1  API-01 paymaster removed; API-02 zod env config (src/config/env.ts), zod added, jest setupEnv; new backlog API-96 (tsc TS1295 tooling, predates step), API-97 (dotenv log line)  - verified by: npm test 8/8, grep for paymaster/TREASURY_PRIVATE_KEY clean, negative boots (bad URL, PORT=0, bad NODE_ENV) exit 1; npx tsc --noEmit still 41 TS1295/TS1287 errors (pre-existing); "required" branch and valid-env boot against a real DB not verified by tracker
