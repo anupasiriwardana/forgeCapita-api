@@ -39,13 +39,6 @@ export interface CreateProfileBody {
   shadowWallet?: string;
 }
 
-export interface PaymasterRequestBody {
-  escrowAddress: string;
-  milestoneIndex: number;
-  chainId: number;
-  gasDebt: string; // Passed as a string to handle BigInt safety
-}
-
 // ─── Standard API Response ───────────────────────────────────────────────────
 
 export interface ApiResponse<T = unknown> {

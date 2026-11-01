@@ -51,8 +51,9 @@ Item IDs (`API-xx`) are referenced from `ROADMAP.md`. Plan revised 2026-10-28.
 
 ## Phase 1: Foundation & hardening
 
-- [ ] **API-01** Remove the broken Paymaster wiring: delete the empty `src/routes/paymasterRoutes.ts` import/mount (it breaks boot), and retire `paymasterService.ts` / `paymasterController.ts` / `TREASURY_PRIVATE_KEY` usage. Replaced by the relayer (API-70+).
-- [ ] **API-02** Environment validation with zod at boot (fail fast, no secrets in logs); keep `.env.example` complete. `[USER-ACTION]` populate `.env` values as each item requires them.
+- [x] **API-01** (done 2026-11-01, verified: paymaster routes/controller/service and `PaymasterRequestBody` removed, no `paymaster`/`TREASURY_PRIVATE_KEY` left in src, tests or .env.example) Remove the broken Paymaster wiring: delete the empty `src/routes/paymasterRoutes.ts` import/mount (it breaks boot), and retire `paymasterService.ts` / `paymasterController.ts` / `TREASURY_PRIVATE_KEY` usage. Replaced by the relayer (API-70+).
+- [x] **API-02** (code done 2026-11-01, verified: `src/config/env.ts` zod schema, exit 1 with variable names only; negative boots for bad DATABASE_URL, PORT=0, NODE_ENV=staging exit 1) Environment validation with zod at boot (fail fast, no secrets in logs); keep `.env.example` complete. `[USER-ACTION]` populate `.env` values as each item requires them.
+  - Remaining for the user: make sure `.env` `DATABASE_URL` starts with postgres:// or postgresql://. The "required" (missing variable) branch was not exercised.
 - [ ] **API-03** Security middleware: `helmet`, CORS allow-list from env, JSON body size limit, global + per-route rate limits (`express-rate-limit`), request IDs.
 - [ ] **API-04** Input validation with zod on every route; uniform error format; no stack traces in production responses.
 - [ ] **API-05** Structured logging (pino) with redaction of passwords, tokens, cookies, signatures and PII; request logging; audit logging separate from app logs.
@@ -152,3 +153,5 @@ Item IDs (`API-xx`) are referenced from `ROADMAP.md`. Plan revised 2026-10-28.
 - [ ] **API-93** `npm audit` in CI; dependency update policy; pin Node 22 LTS.
 - [ ] **API-94** `[USER-ACTION]` GitHub Actions CI (lint, typecheck, test, audit) per repo.
 - [ ] **API-95** Refresh `api-instructions.md` to match this backlog (it still references Sepolia and old function names).
+- [ ] **API-96** Tooling: `npx tsc --noEmit` fails with TS1295/TS1287 in every src file (41 errors, no other errors): tsconfig uses `module: NodeNext` + `verbatimModuleSyntax` but `package.json` has no `"type": "module"`, so files are treated as CommonJS. Predates WS-01.1 (HEAD package.json has no "type", tsconfig unchanged). `tsx` and jest run fine. User decides: add `"type": "module"` (check jest config and `.js` import specifiers) or change tsconfig. Also add `build`/`start`/`typecheck` scripts (needed by API-90).
+- [ ] **API-97** Logging cleanup: dotenv v18 prints an "injected env (n) from .env" line at startup; silence with `dotenv.config({ quiet: true })` as part of API-05.

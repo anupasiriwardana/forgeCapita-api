@@ -4,7 +4,9 @@
 **Runtime:** Node.js 22 / Express.js / TypeScript  
 **Database:** Neon PostgreSQL (Shared with Ponder Indexer)  
 **Port:** 3001  
-**Last Updated:** 2026-10-28 (plan revised; code unchanged since the previous report)  
+**Last Updated:** 2026-11-01  
+
+**Current focus:** Step: WS-01.1 | State: awaiting-review | Updated: 2026-11-01  
 
 ---
 
@@ -28,18 +30,15 @@ Currently, basic server setup, PostgreSQL pool connections, startup profile upse
   - `GET /api/projects/:projectId`: Fetches a single merged startup record by escrow address.
 - **Basic Profile Upsert:**
   - `POST /api/projects/profile`: Upserts startup metadata (`name`, `description`, `logo_url`, `pitch_deck_url`, `founder_bio`, `website_url`, `shadow_wallet`) using `ON CONFLICT (project_id) DO UPDATE`.
-- **Paymaster Signature Logic:**
-  - `src/services/paymasterService.ts` contains the cryptographic logic (`ethers.solidityPackedKeccak256` and ECDSA signing) matching `MilestoneEscrow.sol` verification.
+- **Environment validation (2026-11-01):** `src/config/env.ts` validates `DATABASE_URL` (postgres(ql)://), `PORT` (1..65535, default 3001) and `NODE_ENV` with zod at boot; invalid config prints variable names only and exits 1. `src/index.ts` and `src/db/pool.ts` use it.
+- **Paymaster removed (2026-11-01):** routes, controller and service deleted; replaced later by the relayer (API-70+).
 
 ---
 
 ## 3. Critical Issues & Immediate Blockers
 
-### A. Broken Paymaster Route (`src/routes/paymasterRoutes.ts`)
-- **Status:** **CRITICAL BLOCKER** 🚨
-- **Problem:** `src/routes/paymasterRoutes.ts` is completely empty (0 bytes). However, `src/index.ts` imports it (`import paymasterRoutes from "./routes/paymasterRoutes.js"`) and attempts to mount it via `app.use("/api/paymaster", paymasterRoutes)`.
-- **Impact:** Any attempt to start the server or call `/api/paymaster` fails or throws runtime routing errors.
-- **Remedy (revised 2026-10-28):** Do not repair the treasury-signature Paymaster. Remove the import and mount (backlog API-01); it is replaced by the gasless relayer (API-70 to API-80) once contracts v2 exist.
+### A. Typecheck tooling (API-96)
+- `npx tsc --noEmit` reports 41 TS1295/TS1287 errors (CommonJS package vs NodeNext + verbatimModuleSyntax). Predates WS-01.1; tsx and jest work. User decision needed.
 
 ### B. Missing `status` Column in `startup_profiles`
 - **Status:** **HIGH PRIORITY** ⚠️
@@ -49,8 +48,7 @@ Currently, basic server setup, PostgreSQL pool connections, startup profile upse
 
 ### C. Missing Environment Variables & Configuration
 - **Status:** **CONFIG BLOCKER** ⚠️
-- **Problem:** `.env.example` only lists `DATABASE_URL` and `PORT`. The following essential variables are missing:
-  1. `TREASURY_PRIVATE_KEY`: Required by `paymasterService.ts` to sign gas debt payloads and trigger emergency shutdowns.
+- **Problem:** `.env.example` now lists `DATABASE_URL`, `PORT`, `NODE_ENV` (the treasury key is intentionally never on the server). Still missing for later steps:
   2. `ETHERSCAN_API_KEY` & `BSCSCAN_API_KEY`: Required by `auditService.ts` to query explorer APIs for fiat/crypto transfers into shadow wallets.
   3. `JWT_SECRET`: Required for Web3 SIWE session tokens.
   4. S3/Cloud Storage credentials for logo uploads.
@@ -65,10 +63,6 @@ Currently, basic server setup, PostgreSQL pool connections, startup profile upse
 - The cron job is **never invoked** in `src/index.ts`.
 - No HTTP client integration with Etherscan/BscScan APIs exists to inspect incoming shadow wallet transactions.
 - No discrepancy calculation comparing shadow wallet receipts against Ponder's indexed `RevenueRouter` deposits.
-
-### B. Untrusted Gas Debt in Paymaster Controller
-- `src/controllers/paymasterController.ts` accepts `gasDebt` directly from `req.body` and signs it without verifying against off-chain accumulated subsidization records.
-- Developers could manipulate `gasDebt` in the request to divert milestone release funds. A database table tracking gas subsidies is needed to compute verified debt.
 
 ### C. Logo File Uploading
 - Currently expects a raw URL string in `logo_url`.
@@ -100,8 +94,12 @@ The backlog was rewritten to a production-grade plan. Key changes from what this
 
 ## 6. Summary Checklist of Next Steps
 
-1. [ ] API-01 remove the broken Paymaster mount so the server boots cleanly.
-2. [ ] API-02 to API-10 hardening, migrations (API tables in schema `app`), pagination, readiness.
+1. [x] API-01 remove the broken Paymaster mount; API-02 zod env validation (done 2026-11-01; user must check `.env` DATABASE_URL scheme).
+2. [ ] API-03 to API-10 hardening (next: WS-01.2), migrations (API tables in schema `app`), pagination, readiness.
 3. [ ] `[USER-ACTION]` API-16 / API-17: email provider and admin bootstrap, then API-11 to API-22 accounts and roles.
 4. [ ] API-30 to API-40 application, KYC, agreement and repo workflow.
 5. [ ] After contracts v2 are deployed: API-70 to API-80 relayer.
+
+## Change log
+
+2026-11-01  WS-01.1  API-01 paymaster removed; API-02 zod env config (src/config/env.ts), zod added, jest setupEnv; new backlog API-96 (tsc TS1295 tooling, predates step), API-97 (dotenv log line)  - verified by: npm test 8/8, grep for paymaster/TREASURY_PRIVATE_KEY clean, negative boots (bad URL, PORT=0, bad NODE_ENV) exit 1; npx tsc --noEmit still 41 TS1295/TS1287 errors (pre-existing); "required" branch and valid-env boot against a real DB not verified by tracker

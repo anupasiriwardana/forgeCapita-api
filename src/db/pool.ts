@@ -1,14 +1,12 @@
 import { Pool } from "pg";
-import dotenv from "dotenv";
-
-dotenv.config();
+import { config } from "../config/env.js";
 
 /**
  * Shared PostgreSQL connection pool.
  * Re-exported so every service layer uses the same pool instance.
  */
 export const pool = new Pool({
-  connectionString: process.env["DATABASE_URL"],
+  connectionString: config.DATABASE_URL,
   ssl: {
     rejectUnauthorized: false,
   },
