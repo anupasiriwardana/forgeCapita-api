@@ -18,6 +18,7 @@ export function createProjectRoutes(profileLimiter: RequestHandler): Router {
   /**
    * POST /api/projects/profile
    * Must be declared BEFORE the /:projectId wildcard to avoid route shadowing.
+   * TODO(API-20, WS-06): unauthenticated; anyone can write a profile until wallet auth lands.
    */
   router.post(
     "/profile",

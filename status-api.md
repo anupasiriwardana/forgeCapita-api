@@ -6,7 +6,7 @@
 **Port:** 3001  
 **Last Updated:** 2026-11-05  
 
-**Current focus:** Step: WS-01.3a (API-06, API-07 first part) | State: idle (reviewed, committed, migration applied; user-reported 2026-11-05). Next: WS-01.3b, not started | Updated: 2026-11-05  
+**Current focus:** Step: WS-01.3b (API-07 rest, API-08 partial) | State: awaiting-review (code done; migration 003 NOT yet applied) | Updated: 2026-11-05  
 
 ---
 
@@ -111,12 +111,27 @@ The backlog was rewritten to a production-grade plan. Key changes from what this
 ## 6. Summary Checklist of Next Steps
 
 1. [x] API-01 remove the broken Paymaster mount; API-02 zod env validation (done 2026-11-01; user must check `.env` DATABASE_URL scheme).
-2. [ ] API-03 to API-05 and API-97 done and committed. WS-01.3a (API-06, API-07 first part) done, committed and migration applied 2026-11-05 (user-reported); API-98 README fix (bash vs sh, `npm run migrate:status`) open; next WS-01.3b (API-07 rest, API-08), then API-09/API-10.
+2. [ ] API-03 to API-05 and API-97 done and committed. WS-01.3a (API-06, API-07 first part) done, committed and migration applied 2026-11-05 (user-reported); API-98 README fix (bash vs sh, `npm run migrate:status`) open; WS-01.3b (API-07, API-08 partial) code done 2026-11-05, awaiting review and migration 003; next WS-01.4 (API-09, API-10).
 3. [ ] `[USER-ACTION]` API-16 / API-17: email provider and admin bootstrap, then API-11 to API-22 accounts and roles.
 4. [ ] API-30 to API-40 application, KYC, agreement and repo workflow.
 5. [ ] After contracts v2 are deployed: API-70 to API-80 relayer.
 
+## BLOCKED - WS-01.3b (user actions pending; not a blocker for review)
+Why: migration 003 is written but not applied; the new endpoints need it.
+You need to do:
+1. Commit.
+2. `docker compose exec -T api npm run migrate` (applies 003).
+3. `docker compose exec -T api npm run migrate:status` (001-003 applied, 0 pending).
+4. `docker compose restart api`, then check /health/db.
+5. Sample requests: `Invoke-RestMethod "http://localhost:3001/api/projects?limit=5"`, `...?chainId=421614&state=COMPLETED`, `...?sort=total_raised&order=desc`, `Invoke-RestMethod "http://localhost:3001/api/projects/421614:0xd2eec04febba72507db202dff5a269f26fc56346"` (and a chain 97 id).
+How to confirm (no secrets in chat): expect string amounts, `profile: null`, `total` counted (BSC may be lower while its backfill runs), 404 for an unknown id, 400 for `limit=500`.
+Then run: /next-task WS-01.4
+
+Note: the list response is now `{ items, total, limit, offset }` (was a bare array); the Postman collection in `postman/` still reflects the old shapes (update later).
+
 ## Change log
+
+2026-11-05  WS-01.3b  API-07 ticked; API-08 partial (chain_id, category, pagination, search, filters, sort done; application_status/repo_* deferred to API-30/API-35, owner to WS-06); API-98 README part partial (migrate commands present, sh/bash and ponder_rpc_cache notes missing); migration 003, projectRepository/Service/Schemas, README; no shadow_wallet/kyc_verified in any response  - verified by: reading all files, `docker compose exec -T api npm test` 111/111 (5 suites), `npx tsc --noEmit` 123 errors all TS1295 (73) / TS1287 (50) (API-96); NOT verified: SQL on Postgres, migration 003 not run, Ponder column names against the live schema (checked against ponder.schema.ts only)
 
 2026-11-05  WS-01.3a migration applied  API-06 fully ticked (finding 1 resolved: 0 legacy rows; findings 2-5 minor open); API-07 stays open (chain_id join, WS-01.3b); new API-98 (README: container has only sh, use `docker compose exec api sh` or `exec -T api npm run migrate`; `npm run migrate:status`)  - verified by: USER REPORT only (migrate output "Migrations complete: 2 applied", migrate:status "2 applied, 0 pending, 0 mismatched, 0 without file", /health/db ok, Neon schemas public (empty)/app/ponder/ponder_rpc_cache_1); not verified by Claude (no DB access by design)
 

@@ -27,7 +27,7 @@ const { errorHandler, toLoggableError } = await import("../src/middlewares/error
 const app = createApp();
 
 const validBody = {
-  projectId: "0xabc123",
+  projectId: "421614:0x" + "ab".repeat(20),
   name: "Demo",
   description: "A demo startup.",
 };
@@ -128,7 +128,7 @@ describe("validation", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   };
 
-  it("rejects missing fields", () => rejects({ projectId: "0xabc123" }));
+  it("rejects missing fields", () => rejects({ projectId: "421614:0x" + "ab".repeat(20) }));
 
   it("rejects unknown keys without echoing them", async () => {
     const res = await request(app)
@@ -163,12 +163,12 @@ describe("validation", () => {
   });
 
   it("accepts a valid body and chain-prefixed ids", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ project_id: "421614:0xabc" }], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [{ name: "n", description: "d", updated_at: new Date(0) }], rowCount: 1 });
     const res = await request(app)
       .post("/api/projects/profile")
       .send({
         ...validBody,
-        projectId: "421614:0xabc",
+        projectId: "421614:0x" + "ab".repeat(20),
         shadowWallet: "0x" + "a".repeat(40),
       });
     expect(res.status).toBe(201);
@@ -176,10 +176,10 @@ describe("validation", () => {
 
   it("404 does not echo the project id", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    const res = await request(app).get("/api/projects/uniqueIdXyz");
+    const res = await request(app).get("/api/projects/97:0x" + "cd".repeat(20));
     expect(res.status).toBe(404);
     expect(res.body.error).toBe("Project not found.");
-    expect(res.text).not.toContain("uniqueIdXyz");
+    expect(res.text).not.toContain("cdcdcd");
   });
 
   it("unknown route 404 does not echo the query string", async () => {

@@ -73,65 +73,79 @@ describe("GET /health/db", () => {
   });
 });
 
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. POST /api/projects/profile — Upsert
 // ─────────────────────────────────────────────────────────────────────────────
+const ESCROW = "0x" + "aB".repeat(20);
+const ID = `421614:${ESCROW.toLowerCase()}`;
+
 describe("POST /api/projects/profile", () => {
   const validBody = {
-    projectId: "0xabc123",
+    projectId: `421614:${ESCROW}`,
     name: "ForgeCapita Demo Startup",
     description: "A SaaS platform tokenising startup equity on-chain.",
     logoUrl: "https://cdn.example.com/logo.png",
     pitchDeckUrl: "https://cdn.example.com/pitch.pdf",
     founderBio: "Serial entrepreneur, ex-Google.",
     websiteUrl: "https://forgecapita.io",
+    category: "fintech",
+    shadowWallet: "0x" + "c".repeat(40),
   };
 
-  it("returns 201 with the saved profile on success", async () => {
-    const dbRow = {
-      project_id: validBody.projectId,
-      name: validBody.name,
-      description: validBody.description,
-      logo_url: validBody.logoUrl,
-      pitch_deck_url: validBody.pitchDeckUrl,
-      founder_bio: validBody.founderBio,
-      website_url: validBody.websiteUrl,
-      created_at: new Date().toISOString(),
-    };
+  it("returns 201 with the public profile only and derives the key server-side", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          name: validBody.name,
+          description: validBody.description,
+          logo_url: validBody.logoUrl,
+          pitch_deck_url: validBody.pitchDeckUrl,
+          founder_bio: validBody.founderBio,
+          website_url: validBody.websiteUrl,
+          category: "fintech",
+          updated_at: new Date(0),
+        },
+      ],
+      rowCount: 1,
+    });
 
-    // The upsert INSERT ... RETURNING *
-    mockQuery.mockResolvedValueOnce({ rows: [dbRow], rowCount: 1 });
-
-    const res = await request(app)
-      .post("/api/projects/profile")
-      .send(validBody);
+    const res = await request(app).post("/api/projects/profile").send(validBody);
 
     expect(res.status).toBe(201);
-    expect(res.body.success).toBe(true);
     expect(res.body.message).toBe("Profile saved");
-    expect(res.body.data.project_id).toBe(validBody.projectId);
     expect(res.body.data.name).toBe(validBody.name);
+    expect(res.body.data.logoUrl).toBe(validBody.logoUrl);
+    expect(res.text).not.toMatch(/shadow|kyc|_/);
+    const params = mockQuery.mock.calls[0]?.[1] as unknown[];
+    expect(params.slice(0, 3)).toEqual([ID, 421614, ESCROW.toLowerCase()]);
+    expect(params).toContain(validBody.shadowWallet);
+  });
+
+  it("rejects a non-composite projectId and an unsupported chain", async () => {
+    for (const projectId of ["0xabc123", ESCROW, `1:${ESCROW}`]) {
+      const res = await request(app)
+        .post("/api/projects/profile")
+        .send({ ...validBody, projectId });
+      expect(res.status).toBe(400);
+    }
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("returns 400 when required fields are missing", async () => {
-    // No DB call — validation short-circuits before hitting the service
     const res = await request(app)
       .post("/api/projects/profile")
-      .send({ projectId: "0xabc123" }); // missing name & description
+      .send({ projectId: ID });
 
     expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
     expect(res.body.error).toBe("Validation failed");
-    expect(Array.isArray(res.body.details)).toBe(true);
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("returns 500 when the DB throws during upsert", async () => {
     mockQuery.mockRejectedValueOnce(new Error("unique constraint violation"));
 
-    const res = await request(app)
-      .post("/api/projects/profile")
-      .send(validBody);
+    const res = await request(app).post("/api/projects/profile").send(validBody);
 
     expect(res.status).toBe(500);
     expect(res.body.success).toBe(false);
@@ -139,63 +153,138 @@ describe("POST /api/projects/profile", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. GET /api/projects — All Unified Projects
+// 3. GET /api/projects — list
 // ─────────────────────────────────────────────────────────────────────────────
-describe("GET /api/projects", () => {
-  const mergedRows = [
-    {
-      id: "0xabc123",
-      total_funded: "5000000000000000000",
-      milestone_count: 3,
-      milestones_passed: 1,
-      is_active: true,
-      name: "ForgeCapita Demo Startup",
-      description: "A SaaS platform tokenising startup equity on-chain.",
-      logo_url: "https://cdn.example.com/logo.png",
-      website_url: "https://forgecapita.io",
-    },
-  ];
+const projectRow = {
+  id: ID,
+  chain_id: 421614,
+  escrow_address: ESCROW.toLowerCase(),
+  token_address: "0x" + "01".repeat(20),
+  distributor_address: "0x" + "02".repeat(20),
+  developer: "0x" + "03".repeat(20),
+  funding_goal: "9007199254740993000000",
+  total_raised: "9007199254740993",
+  funding_deadline: "1700000000",
+  close_grace: "1",
+  refund_window: "2",
+  voting_period: "3",
+  funding_closed_at: null,
+  platform_fee: null,
+  cancelled_at: null,
+  shutdown_at: null,
+  total_staked: "0",
+  created_at: "1699999999",
+  is_funding_active: true,
+  state: "FUNDING",
+  failed_milestone_index: null,
+  is_invalidated: false,
+  current_milestone_index: 0,
+  token_name: "Tok",
+  token_symbol: "TK",
+  profile_project_id: null,
+  profile_name: null,
+  profile_description: null,
+  profile_logo_url: null,
+  profile_pitch_deck_url: null,
+  profile_founder_bio: null,
+  profile_website_url: null,
+  profile_category: null,
+  profile_updated_at: null,
+};
 
-  it("returns 200 with an array of merged project data", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: mergedRows, rowCount: 1 });
+function mockListAndCount(rows: unknown[], total: string): void {
+  mockQuery.mockImplementation(async (sql: unknown) =>
+    String(sql).includes("count(*)")
+      ? { rows: [{ total }], rowCount: 1 }
+      : { rows, rowCount: rows.length }
+  );
+}
+
+describe("GET /api/projects", () => {
+  const dev = "0x" + "Ab".repeat(20);
+
+  it("returns the paginated envelope with defaults and public camelCase items", async () => {
+    mockListAndCount([projectRow], "1");
 
     const res = await request(app).get("/api/projects");
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(Array.isArray(res.body.data)).toBe(true);
-    expect(res.body.data[0].id).toBe("0xabc123");
-    expect(res.body.data[0].name).toBe("ForgeCapita Demo Startup");
+    expect(res.body.data).toMatchObject({ total: 1, limit: 20, offset: 0 });
+    const item = res.body.data.items[0];
+    expect(item.fundingGoal).toBe("9007199254740993000000");
+    expect(item.fundingClosedAt).toBeNull();
+    expect(item.profile).toBeNull();
+    expect(res.text).not.toMatch(/shadow|kyc|chain_id|token_name/i);
+    const listParams = mockQuery.mock.calls.find((c) => String(c[0]).includes('p."id"'))?.[1];
+    expect(listParams).toEqual([20, 0]);
+  });
+
+  it("accepts the caps and lowercases developer", async () => {
+    mockListAndCount([], "0");
+    const res = await request(app).get(`/api/projects?limit=100&offset=10000&developer=${dev}`);
+    expect(res.status).toBe(200);
+    const listParams = mockQuery.mock.calls.find((c) => String(c[0]).includes('p."id"'))?.[1];
+    expect(listParams).toEqual([dev.toLowerCase(), 100, 10000]);
+  });
+
+  it("does not coerce hasProfile=false to true", async () => {
+    mockListAndCount([], "0");
+    await request(app).get("/api/projects?hasProfile=false");
+    const sql = String(mockQuery.mock.calls.find((c) => String(c[0]).includes('p."id"'))?.[0]);
+    expect(sql).toContain("s.project_id IS NULL");
+  });
+
+  it.each([
+    "foo=1",
+    "limit=0",
+    "limit=101",
+    "offset=10001",
+    "chainId=1",
+    "state=BOGUS",
+    "developer=0x123",
+    "hasProfile=yes",
+    "limit=1&limit=2",
+    "sort=id",
+    "category=Bad_Cat",
+  ])("rejects ?%s with 400", async (qs) => {
+    const res = await request(app).get(`/api/projects?${qs}`);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Validation failed");
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. GET /api/projects/:projectId — Single Unified Project
+// 4. GET /api/projects/:projectId — detail
 // ─────────────────────────────────────────────────────────────────────────────
 describe("GET /api/projects/:projectId", () => {
-  it("returns 200 with the merged project when found", async () => {
-    const row = {
-      id: "0xabc123",
-      name: "ForgeCapita Demo Startup",
-      description: "A SaaS platform tokenising startup equity on-chain.",
-    };
+  it("returns 200 with the project and lowercases the escrow before querying", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [projectRow], rowCount: 1 });
 
-    mockQuery.mockResolvedValueOnce({ rows: [row], rowCount: 1 });
-
-    const res = await request(app).get("/api/projects/0xabc123");
+    const res = await request(app).get(`/api/projects/421614:${ESCROW}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data.id).toBe("0xabc123");
+    expect(res.body.data.id).toBe(ID);
+    expect(res.body.data.profile).toBeNull();
+    expect(res.text).not.toMatch(/shadow|kyc|chain_id/i);
+    expect(mockQuery.mock.calls[0]?.[1]).toEqual([ID]);
   });
 
   it("returns 404 when the project does not exist", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
-    const res = await request(app).get("/api/projects/0xdeadbeef");
+    const res = await request(app).get(`/api/projects/97:${ESCROW}`);
 
     expect(res.status).toBe(404);
-    expect(res.body.success).toBe(false);
-    expect(res.body.error).toMatch(/not found/i);
+    expect(res.body.error).toBe("Project not found.");
+  });
+
+  it("returns 400 for a non-composite id or unsupported chain", async () => {
+    for (const id of ["0xabc123", ESCROW, `1:${ESCROW}`]) {
+      const res = await request(app).get(`/api/projects/${id}`);
+      expect(res.status).toBe(400);
+    }
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 });

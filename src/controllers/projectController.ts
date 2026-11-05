@@ -2,10 +2,14 @@ import type { Request, Response, NextFunction } from "express";
 import {
   upsertProfile,
   getProjectById,
-  getAllProjects,
+  listProjects,
 } from "../services/projectService.js";
 import type { ValidatedRequest } from "../middlewares/validate.js";
-import type { ProfileBody, ProjectIdParams } from "../schemas/projectSchemas.js";
+import type {
+  ListProjectsQuery,
+  ProfileBody,
+  ProjectIdParams,
+} from "../schemas/projectSchemas.js";
 import type { ApiResponse } from "../types/index.js";
 
 function validatedOf(res: Response): ValidatedRequest {
@@ -35,7 +39,7 @@ export async function createOrUpdateProfile(
 // ─── GET /api/projects/:projectId ────────────────────────────────────────────
 
 export async function getProject(
-  req: Request,
+  _req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> {
@@ -68,11 +72,9 @@ export async function getProjects(
   next: NextFunction
 ): Promise<void> {
   try {
-    const projects = await getAllProjects();
-    res.status(200).json({
-      success: true,
-      data: projects,
-    } satisfies ApiResponse);
+    const query = validatedOf(res).query as ListProjectsQuery;
+    const data = await listProjects(query);
+    res.status(200).json({ success: true, data } satisfies ApiResponse);
   } catch (err) {
     next(err);
   }

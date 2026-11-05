@@ -1,89 +1,119 @@
-import { pool, qualified } from "../db/pool.js";
+import {
+  findProjectById,
+  findProjects,
+  upsertProfile as saveProfile,
+  type ProjectFilters,
+  type ProjectSort,
+  type SortOrder,
+} from "../repositories/projectRepository.js";
 import type {
   CreateProfileBody,
-  StartupProfileRow,
-  UnifiedProjectRow,
+  ProfileDto,
+  ProfileRow,
+  ProjectDto,
+  ProjectListDto,
+  ProjectRow,
 } from "../types/index.js";
 
-// ─── Upsert a startup profile ────────────────────────────────────────────────
+export const MAX_LIMIT = 100;
+export const MAX_OFFSET = 10000;
 
-export async function upsertProfile(
-  body: CreateProfileBody
-): Promise<StartupProfileRow> {
-  const { projectId, name, description, logoUrl, pitchDeckUrl, founderBio, websiteUrl, shadowWallet } =
-    body;
-
-  const sql = `
-    INSERT INTO app.startup_profiles
-      (project_id, name, description, logo_url, pitch_deck_url, founder_bio, website_url, shadow_wallet)
-    VALUES
-      ($1, $2, $3, $4, $5, $6, $7, $8)
-    ON CONFLICT (project_id) DO UPDATE SET
-      name           = EXCLUDED.name,
-      description    = EXCLUDED.description,
-      logo_url       = EXCLUDED.logo_url,
-      pitch_deck_url = EXCLUDED.pitch_deck_url,
-      founder_bio    = EXCLUDED.founder_bio,
-      website_url    = EXCLUDED.website_url,
-      shadow_wallet  = EXCLUDED.shadow_wallet
-    RETURNING *;
-  `;
-
-  const result = await pool.query<StartupProfileRow>(sql, [
-    projectId,
-    name,
-    description,
-    logoUrl ?? null,
-    pitchDeckUrl ?? null,
-    founderBio ?? null,
-    websiteUrl ?? null,
-    shadowWallet ?? null
-  ]);
-
-  // result.rows[0] is guaranteed because RETURNING * always returns the upserted row
-  return result.rows[0]!;
+export interface ListProjectsParams extends ProjectFilters {
+  limit: number;
+  offset: number;
+  sort: ProjectSort;
+  order: SortOrder;
 }
 
-// ─── Fetch a single unified project (on-chain JOIN off-chain) ────────────────
-
-export async function getProjectById(
-  projectId: string
-): Promise<UnifiedProjectRow | null> {
-  const sql = `
-    SELECT
-      p.*,
-      s.name,
-      s.description,
-      s.logo_url,
-      s.pitch_deck_url,
-      s.founder_bio,
-      s.website_url
-    FROM ${qualified("project")} p
-    LEFT JOIN app.startup_profiles s ON p.id = s.project_id
-    WHERE p.id = $1;
-  `;
-
-  const result = await pool.query<UnifiedProjectRow>(sql, [projectId]);
-  return result.rows[0] ?? null;
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
 }
 
-// ─── Fetch all unified projects ───────────────────────────────────────────────
+function toProfileDto(row: ProfileRow): ProfileDto {
+  return {
+    name: row.name,
+    description: row.description,
+    logoUrl: row.logo_url,
+    pitchDeckUrl: row.pitch_deck_url,
+    founderBio: row.founder_bio,
+    websiteUrl: row.website_url,
+    category: row.category,
+    updatedAt: row.updated_at.toISOString(),
+  };
+}
 
-export async function getAllProjects(): Promise<UnifiedProjectRow[]> {
-  const sql = `
-    SELECT
-      p.*,
-      s.name,
-      s.description,
-      s.logo_url,
-      s.pitch_deck_url,
-      s.founder_bio,
-      s.website_url
-    FROM ${qualified("project")} p
-    LEFT JOIN app.startup_profiles s ON p.id = s.project_id
-    ORDER BY p.created_at DESC;
-  `;
+function profileOf(row: ProjectRow): ProfileDto | null {
+  if (
+    row.profile_project_id === null ||
+    row.profile_name === null ||
+    row.profile_description === null ||
+    row.profile_updated_at === null
+  ) {
+    return null;
+  }
+  return toProfileDto({
+    name: row.profile_name,
+    description: row.profile_description,
+    logo_url: row.profile_logo_url,
+    pitch_deck_url: row.profile_pitch_deck_url,
+    founder_bio: row.profile_founder_bio,
+    website_url: row.profile_website_url,
+    category: row.profile_category,
+    updated_at: row.profile_updated_at,
+  });
+}
 
-  const result = await pool.query<UnifiedProjectRow>(sql);
-  return result.rows;
+/** Explicit mapping: bigint-backed columns stay decimal strings, nothing is spread. */
+export function toProjectDto(row: ProjectRow): ProjectDto {
+  return {
+    id: row.id,
+    chainId: row.chain_id,
+    escrowAddress: row.escrow_address,
+    tokenAddress: row.token_address,
+    distributorAddress: row.distributor_address,
+    developer: row.developer,
+    fundingGoal: row.funding_goal,
+    totalRaised: row.total_raised,
+    fundingDeadline: row.funding_deadline,
+    closeGrace: row.close_grace,
+    refundWindow: row.refund_window,
+    votingPeriod: row.voting_period,
+    fundingClosedAt: row.funding_closed_at,
+    platformFee: row.platform_fee,
+    cancelledAt: row.cancelled_at,
+    shutdownAt: row.shutdown_at,
+    totalStaked: row.total_staked,
+    createdAt: row.created_at,
+    isFundingActive: row.is_funding_active,
+    state: row.state,
+    failedMilestoneIndex: row.failed_milestone_index,
+    isInvalidated: row.is_invalidated,
+    currentMilestoneIndex: row.current_milestone_index,
+    tokenName: row.token_name,
+    tokenSymbol: row.token_symbol,
+    profile: profileOf(row),
+  };
+}
+
+export async function listProjects(params: ListProjectsParams): Promise<ProjectListDto> {
+  const { limit, offset, sort, order, ...filters } = params;
+  const safeLimit = clamp(limit, 1, MAX_LIMIT);
+  const safeOffset = clamp(offset, 0, MAX_OFFSET);
+
+  const { rows, total } = await findProjects(filters, sort, order, safeLimit, safeOffset);
+  return { items: rows.map(toProjectDto), total, limit: safeLimit, offset: safeOffset };
+}
+
+export async function getProjectById(id: string): Promise<ProjectDto | null> {
+  const row = await findProjectById(id);
+  return row ? toProjectDto(row) : null;
+}
+
+/**
+ * TODO(API-20, WS-06): unauthenticated. Anyone can write any profile until
+ * wallet-signature auth and owner checks land. shadowWallet is stored but never
+ * returned (TODO API-38).
+ */
+export async function upsertProfile(body: CreateProfileBody): Promise<ProfileDto> {
+  return toProfileDto(await saveProfile(body));
 }
