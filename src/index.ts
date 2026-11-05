@@ -1,23 +1,30 @@
 import { config } from "./config/env.js";
 import { createApp } from "./app.js";
-import { initDb, pool } from "./db/pool.js";
+import { resolve } from "node:path";
+import { MigrationError, verifyMigrationsApplied } from "./db/migrationRunner.js";
+import { pool } from "./db/pool.js";
 import { logger } from "./logger.js";
+import { toLoggableError } from "./middlewares/errorHandler.js";
 
 const app = createApp();
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 async function boot(): Promise<void> {
-  try {
-    // Ensure startup_profiles table exists before accepting traffic
-    await initDb();
-  } catch (err) {
-    logger.fatal({ err }, "Failed to initialise database");
-    process.exit(1);
-  }
-
   // Tests drive the app through supertest and must not bind a port.
   if (config.NODE_ENV === "test") return;
+
+  try {
+    // Read-only: the schema is changed only by `npm run migrate`.
+    await verifyMigrationsApplied(pool, resolve(process.cwd(), "migrations"));
+  } catch (err) {
+    if (err instanceof MigrationError) {
+      logger.fatal("Database migrations are not applied. Run: npm run migrate");
+    } else {
+      logger.fatal({ err: toLoggableError(err) }, "Failed to verify database migrations");
+    }
+    process.exit(1);
+  }
 
   const server = app.listen(config.PORT, () => {
     logger.info({ port: config.PORT }, "forgeCapita API listening");

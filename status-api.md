@@ -6,7 +6,7 @@
 **Port:** 3001  
 **Last Updated:** 2026-11-05  
 
-**Current focus:** Step: WS-01.2 (API-03, API-04, API-05, API-97) | State: awaiting-review | Updated: 2026-11-05  
+**Current focus:** Step: WS-01.3a (API-06, API-07 first part) | State: awaiting-review | Updated: 2026-11-05  
 
 ---
 
@@ -22,7 +22,7 @@ Currently, basic server setup, PostgreSQL pool connections, startup profile upse
 
 - **Database Connection & Initialization:**
   - `src/db/pool.ts` connects cleanly to the Neon PostgreSQL instance with SSL.
-  - Automatically verifies and creates the `startup_profiles` table on server boot.
+  - (2026-11-05, WS-01.3a, awaiting review) The API no longer creates tables on boot: `src/index.ts` only verifies that every file in `migrations/` is applied (read-only) and exits 1 with `Run: npm run migrate` otherwise. Schema changes go through `npm run migrate` / `migrate:status` (`src/db/migrationRunner.ts`, `migrate.ts`; `app.schema_migrations` with checksums, advisory lock 727361001, one transaction per file). `001` creates schema `app`; `002` moves `public.startup_profiles` into `app` (or creates it), converts `created_at` to timestamptz, adds `updated_at` with trigger and 8 CHECK constraints. Ponder tables are read via `"<PONDER_SCHEMA>"."project"`. NOT APPLIED to the real database yet (USER-ACTION, see backlog API-06).
 - **Health Check Endpoint:**
   - `GET /health` verifies server uptime and database connectivity.
 - **Unified Projects Querying (The SQL JOIN):**
@@ -40,13 +40,21 @@ Currently, basic server setup, PostgreSQL pool connections, startup profile upse
 ## 3. Critical Issues & Immediate Blockers
 
 ### A. Typecheck tooling (API-96)
-- `npx tsc --noEmit` reports 91 TS1295/TS1287 errors (57 + 34; 89 before the WS-01.2 follow-up, +2 explained by one new import and one new export; 41 before WS-01.2; the new files add the same kind; nothing else is reported, so real type errors are hidden). CommonJS package vs NodeNext + verbatimModuleSyntax. tsx and jest work. User decision needed.
+- `npx tsc --noEmit` reports 110 errors, all TS1295 (70) / TS1287 (40) (tracker re-ran 2026-11-05). Above the 91 baseline because WS-01.3a added imports: migrationRunner.ts 10, migrate.ts 6, index.ts 9, pool.ts 4, projectService.ts 5, env.ts 5; no other error kinds. Earlier: 91 (57 + 34; 89 before the WS-01.2 follow-up, +2 explained by one new import and one new export; 41 before WS-01.2; the new files add the same kind; nothing else is reported, so real type errors are hidden). CommonJS package vs NodeNext + verbatimModuleSyntax. tsx and jest work. User decision needed.
 
 ### A2. Findings from the WS-01.2 close (2026-11-05)
 - FIXED 2026-11-05 (follow-up): library 4xx errors (e.g. `URIError` from a bad `%` escape) now return 400 with a generic message; `/health/db` logs via `toLoggableError`; `/health/` exempt from logging and limiter.
 - Minor open: redaction covers one nesting level only; in production pino still emits `"stack":""`; the URIError test asserts the response only, not the log line (the handler logs the generic message, read-verified); pino-http `res.err` logging not exercised.
 - Minor: `/health/db` logs the full pg error in production; redaction covers one nesting level; `/health/` with trailing slash is not exempt from the limiter or request log filter; preflights are not rate limited; express-rate-limit prints its own console warning if `X-Forwarded-For` arrives while `TRUST_PROXY=0`; LF files will be shown as CRLF-converted by git (cosmetic, no `.gitattributes`).
 - Audit logging: `auditLogger` exists, nothing writes to it yet.
+
+### A3. Findings from the WS-01.3a close (2026-11-05; nothing was run against a real Postgres)
+- SQL read line by line: `$mig$` dollar quoting valid (each block closed, no nested quotes); `SET SCHEMA` carries the primary key index, defaults, constraints and triggers; `data_type = 'timestamp without time zone'` and the `table_schema = 'app'` filter are correct; `AT TIME ZONE 'UTC'` is right if the old session zone was UTC (Neon default; not verified); `ADD COLUMN IF NOT EXISTS updated_at ... NOT NULL DEFAULT now()` fills existing rows; `kyc_verified` backfill precedes SET NOT NULL; regexes use `~` in plain SQL, no escaping problem; URL and bio CHECKs are NULL-tolerant; the function is CREATE OR REPLACE and the trigger DROP IF EXISTS + CREATE, so 002 is re-runnable. The API zod limits match the CHECKs.
+- RISK (medium-low): legacy rows written by the old API (it validated only required fields) may violate a CHECK (empty or over-long name/description, project_id with other characters, URLs over 2048). 002 would fail and roll back whole (nothing half-applied; runner prints SQLSTATE 23514 and the constraint name). Probably a tiny or empty table (v1 data discarded). Tradeoff for `NOT VALID`: the migration cannot fail on old data, but bad old rows stay and any later UPDATE/upsert of such a row fails until fixed, then `VALIDATE CONSTRAINT`. User decision; the optional Neon count check helps. 002 also assumes legacy `kyc_verified` and `shadow_wallet` columns exist (old boot code created them).
+- Runner: bootstrap and each file run in their own BEGIN..COMMIT on ONE checked-out client with `pg_advisory_xact_lock` first, so it is safe on Neon's pooled endpoint (transaction mode); the direct string is still recommended. Pending set is re-checked under the lock. Errors surface only `Migration <file> failed (SQLSTATE, constraint)`; non-migration errors print a generic message in `migrate.ts`. Low: version/name/checksum are interpolated, not parameters (constrained to digits, `[a-z0-9_]` name, hex; quotes doubled); no `lock_timeout`/`statement_timeout`, so a blocked DDL waits indefinitely; no Pool 'error' handler in `migrate.ts`.
+- Boot: `verifyMigrationsApplied` treats 42P01 as all pending and checks only pending files; checksum drift and unknown applied versions are NOT checked at boot (only by `migrate`/`migrate:status`). On failure it calls `process.exit(1)`; under `tsx watch` in the container the watcher stays alive waiting for a file change, so after `migrate` the user restarts the API. Non-Migration boot errors are logged via `toLoggableError` (a connection error message may name a host).
+- projectService: `qualified()` quotes the schema; `PONDER_SCHEMA` is validated by `^[a-z_][a-z0-9_]{0,62}$` before interpolation; the table argument is a constant. The upsert keeps all 8 data columns; `updated_at` is set by the trigger. `StartupProfileRow` lacks `shadow_wallet`, `kyc_verified`, `updated_at` (cosmetic, 1.3b). The joins still use `p.id = s.project_id` without `chain_id` and may not match v2 indexer ids until WS-01.3b.
+- Tests: 84 pass, 5 suites. migrationRunner tests use a recording fake pool and assert real order (BEGIN, lock, SQL, INSERT, COMMIT), rollback with no INSERT, concurrent skip, read-only verify, plus static checks of the real SQL files; projectService tests assert generated SQL strings and env regex cases. Not vacuous, but they never execute the SQL or regexes on Postgres, so the SQL is verified by reading only.
 
 ### B. Missing `status` Column in `startup_profiles`
 - **Status:** **HIGH PRIORITY** ⚠️
@@ -103,13 +111,14 @@ The backlog was rewritten to a production-grade plan. Key changes from what this
 ## 6. Summary Checklist of Next Steps
 
 1. [x] API-01 remove the broken Paymaster mount; API-02 zod env validation (done 2026-11-01; user must check `.env` DATABASE_URL scheme).
-2. [ ] API-03 to API-05 and API-97 done 2026-11-05 (awaiting review); next API-06 to API-08 (WS-01.3: migrations, `app` schema, pagination), then API-09/API-10 readiness and versioning.
+2. [ ] API-03 to API-05 and API-97 done and committed. WS-01.3a (API-06 code, API-07 first part) done 2026-11-05, awaiting review; then the USER-ACTION migration (backlog API-06); then WS-01.3b (API-07 rest, API-08), then API-09/API-10.
 3. [ ] `[USER-ACTION]` API-16 / API-17: email provider and admin bootstrap, then API-11 to API-22 accounts and roles.
 4. [ ] API-30 to API-40 application, KYC, agreement and repo workflow.
 5. [ ] After contracts v2 are deployed: API-70 to API-80 relayer.
 
 ## Change log
 
+2026-11-05  WS-01.3a  API-06 ticked as code-done (real DB application NOT verified); API-07 first part done, item stays open (chain_id join -> WS-01.3b); API-96 count now 110 (70 TS1295 + 40 TS1287); new migrations/001, 002, src/db/migrationRunner.ts, migrate.ts; pool.ts `qualified()`, env.ts `PONDER_SCHEMA`, index.ts boot verify, projectService qualification, README, .env.example; findings in 3.A3  - verified by: reading all listed files, `docker compose exec -T api npm test` 84/84 (5 suites), `docker compose exec -T api npx tsc --noEmit` 110 errors all TS1295/TS1287 with per-file counts; NOT verified: any SQL on a real Postgres, `npm run migrate` (never run by tracker), boot against Neon
 2026-11-05  WS-01.2 follow-up  errorHandler honours 4xx only with expose===true or URIError (generic messages), toLoggableError, /health/ exemption, .gitattributes (`* text=auto eol=lf`; user runs `git add --renormalize .`, existing files may show as modified once); tests 44; tsc 91 (+2 = new import/export, API-96)  - verified by: reading errorHandler/healthController/app diffs, `docker compose exec -T api npm test` 44/44, `npx tsc --noEmit` 91 all TS1295/TS1287 listed per file; NOT verified: live production log shape
 2026-11-05  WS-01.2  API-03, API-04, API-05, API-97 ticked (audit logger created but unused); new `app.ts`, `errors.ts`, `logger.ts`, `rateLimit.ts`, `requestId.ts`, `validate.ts`, `schemas/`; `index.ts` graceful shutdown; helmet 8.3.0, express-rate-limit 8.7.3, pino 10.4.0, pino-http 11.0.0, pino-pretty 13.2.0 added (lockfile checked); findings: 400-vs-500 for library 4xx, minor logging/limiter items (see 3.A2); API-96 stays open (tsc 89 errors, all TS1295/TS1287)  - verified by: reading all src files and tests, `docker compose exec api npm test` 3 suites 39/39, `npx tsc --noEmit` 89 errors all TS1295/TS1287, grep: only two console.error in env.ts, no req.body logging; NOT verified: real DB boot, Render proxy hops, browser CORS, shutdown signals, pino-pretty
 

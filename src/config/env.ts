@@ -38,6 +38,10 @@ export const envSchema = z
     DATABASE_URL: z
       .string()
       .regex(/^postgres(ql)?:\/\//, "must be a postgres:// or postgresql:// URL"),
+    PONDER_SCHEMA: z
+      .string()
+      .regex(/^[a-z_][a-z0-9_]{0,62}$/, "must be a lowercase SQL identifier")
+      .default("ponder"),
     PORT: z.coerce.number().int().min(1).max(65535).default(3001),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     CORS_ORIGINS: z.string().optional(),

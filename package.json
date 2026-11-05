@@ -5,6 +5,8 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "migrate": "tsx src/db/migrate.ts up",
+    "migrate:status": "tsx src/db/migrate.ts status",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --forceExit"
   },
   "keywords": [],

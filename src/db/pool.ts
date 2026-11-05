@@ -1,6 +1,5 @@
 import { Pool } from "pg";
 import { config } from "../config/env.js";
-import { logger } from "../logger.js";
 
 /**
  * Shared PostgreSQL connection pool.
@@ -14,25 +13,10 @@ export const pool = new Pool({
 });
 
 /**
- * Runs once at server startup.
- * Creates the `startup_profiles` table if it does not already exist.
+ * Quoted, schema-qualified name of a Ponder-managed table, e.g. "ponder"."project".
+ * The schema comes from PONDER_SCHEMA, which env validation restricts to
+ * ^[a-z_][a-z0-9_]{0,62}$, so interpolating it is safe. `table` must be a constant.
  */
-export async function initDb(): Promise<void> {
-  const sql = `
-    CREATE TABLE IF NOT EXISTS startup_profiles (
-      project_id      VARCHAR      PRIMARY KEY,
-      name            VARCHAR      NOT NULL,
-      description     TEXT         NOT NULL,
-      logo_url        VARCHAR,
-      pitch_deck_url  VARCHAR,
-      founder_bio     TEXT,
-      website_url     VARCHAR,
-      shadow_wallet   VARCHAR,
-      kyc_verified    BOOLEAN      DEFAULT false,
-      created_at      TIMESTAMP    NOT NULL DEFAULT NOW()
-    );
-  `;
-
-  await pool.query(sql);
-  logger.info("DB schema verified: startup_profiles table is ready");
+export function qualified(table: string): string {
+  return `"${config.PONDER_SCHEMA}"."${table}"`;
 }

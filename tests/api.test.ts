@@ -3,11 +3,11 @@
  *
  * Strategy:
  *  - The `pg` module is mocked before any app module is imported.
- *  - `app` (and therefore `initDb`) is imported via a dynamic import ONCE after
- *    the mock is established — Jest hoisting guarantees the mock is in place.
+ *  - `app` is imported via a dynamic import ONCE after the mock is established —
+ *    Jest hoisting guarantees the mock is in place.
  *  - `mockQuery` is reset in a top-level `beforeEach` so each test begins with a
- *    clean call queue.  Because `initDb()` ran during module initialisation it has
- *    already consumed its call; subsequent queries are purely from request handlers.
+ *    clean call queue.  Boot-time migration verification is skipped under
+ *    NODE_ENV=test, so queries are purely from request handlers.
  */
 
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
@@ -30,8 +30,6 @@ jest.mock("pg", () => ({
 // ts-jest / @swc/jest supports top-level await in ESM mode
 const { default: app } = await import("../src/index.js");
 
-// After the import, initDb() has already run and consumed one mockQuery call.
-// From here on, every beforeEach reset gives tests a clean slate.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Global reset — runs before every individual test

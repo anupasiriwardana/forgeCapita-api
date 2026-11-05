@@ -1,4 +1,4 @@
-import { pool } from "../db/pool.js";
+import { pool, qualified } from "../db/pool.js";
 import type {
   CreateProfileBody,
   StartupProfileRow,
@@ -14,7 +14,7 @@ export async function upsertProfile(
     body;
 
   const sql = `
-    INSERT INTO startup_profiles
+    INSERT INTO app.startup_profiles
       (project_id, name, description, logo_url, pitch_deck_url, founder_bio, website_url, shadow_wallet)
     VALUES
       ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -58,8 +58,8 @@ export async function getProjectById(
       s.pitch_deck_url,
       s.founder_bio,
       s.website_url
-    FROM project p
-    LEFT JOIN startup_profiles s ON p.id = s.project_id
+    FROM ${qualified("project")} p
+    LEFT JOIN app.startup_profiles s ON p.id = s.project_id
     WHERE p.id = $1;
   `;
 
@@ -79,8 +79,8 @@ export async function getAllProjects(): Promise<UnifiedProjectRow[]> {
       s.pitch_deck_url,
       s.founder_bio,
       s.website_url
-    FROM project p
-    LEFT JOIN startup_profiles s ON p.id = s.project_id
+    FROM ${qualified("project")} p
+    LEFT JOIN app.startup_profiles s ON p.id = s.project_id
     ORDER BY p.created_at DESC;
   `;
 
