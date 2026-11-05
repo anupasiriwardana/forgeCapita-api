@@ -14,6 +14,9 @@ import { createProjectRoutes } from "./routes/projectRoutes.js";
 
 const allowedOrigins: ReadonlySet<string> = new Set(config.CORS_ORIGINS);
 
+/** Liveness path with or without a trailing slash (Express strict routing is off). */
+const LIVENESS_PATH = /^\/health\/?$/;
+
 function requestPath(url: string | undefined): string {
   return (url ?? "").split("?")[0] ?? "";
 }
@@ -34,7 +37,7 @@ export function createApp(): Express {
     pinoHttp({
       logger,
       genReqId: (_req, res) => (res as Response).locals["requestId"] as string,
-      autoLogging: { ignore: (req) => requestPath(req.url) === "/health" },
+      autoLogging: { ignore: (req) => LIVENESS_PATH.test(requestPath(req.url)) },
       customLogLevel: (_req, res, err) =>
         err || res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "info",
       serializers: {
@@ -79,7 +82,7 @@ export function createApp(): Express {
     createLimiter({
       windowMs: config.RATE_LIMIT_WINDOW_MS,
       max: config.RATE_LIMIT_MAX,
-      skip: (req: Request) => req.path === "/health",
+      skip: (req: Request) => LIVENESS_PATH.test(req.path),
     })
   );
 

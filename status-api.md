@@ -40,10 +40,11 @@ Currently, basic server setup, PostgreSQL pool connections, startup profile upse
 ## 3. Critical Issues & Immediate Blockers
 
 ### A. Typecheck tooling (API-96)
-- `npx tsc --noEmit` reports 89 TS1295/TS1287 errors (41 before WS-01.2; the new files add the same kind; nothing else is reported, so real type errors are hidden). CommonJS package vs NodeNext + verbatimModuleSyntax. tsx and jest work. User decision needed.
+- `npx tsc --noEmit` reports 91 TS1295/TS1287 errors (57 + 34; 89 before the WS-01.2 follow-up, +2 explained by one new import and one new export; 41 before WS-01.2; the new files add the same kind; nothing else is reported, so real type errors are hidden). CommonJS package vs NodeNext + verbatimModuleSyntax. tsx and jest work. User decision needed.
 
 ### A2. Findings from the WS-01.2 close (2026-11-05)
-- Bare 4xx errors from libraries become 500 (e.g. `URIError` with `status 400` from the Express 5 router on a bad `%` escape in a path). Recommended small fix, user decision pending: honour numeric `status`/`statusCode` 400-499 with `expose === true`, generic message per status.
+- FIXED 2026-11-05 (follow-up): library 4xx errors (e.g. `URIError` from a bad `%` escape) now return 400 with a generic message; `/health/db` logs via `toLoggableError`; `/health/` exempt from logging and limiter.
+- Minor open: redaction covers one nesting level only; in production pino still emits `"stack":""`; the URIError test asserts the response only, not the log line (the handler logs the generic message, read-verified); pino-http `res.err` logging not exercised.
 - Minor: `/health/db` logs the full pg error in production; redaction covers one nesting level; `/health/` with trailing slash is not exempt from the limiter or request log filter; preflights are not rate limited; express-rate-limit prints its own console warning if `X-Forwarded-For` arrives while `TRUST_PROXY=0`; LF files will be shown as CRLF-converted by git (cosmetic, no `.gitattributes`).
 - Audit logging: `auditLogger` exists, nothing writes to it yet.
 
@@ -109,6 +110,7 @@ The backlog was rewritten to a production-grade plan. Key changes from what this
 
 ## Change log
 
+2026-11-05  WS-01.2 follow-up  errorHandler honours 4xx only with expose===true or URIError (generic messages), toLoggableError, /health/ exemption, .gitattributes (`* text=auto eol=lf`; user runs `git add --renormalize .`, existing files may show as modified once); tests 44; tsc 91 (+2 = new import/export, API-96)  - verified by: reading errorHandler/healthController/app diffs, `docker compose exec -T api npm test` 44/44, `npx tsc --noEmit` 91 all TS1295/TS1287 listed per file; NOT verified: live production log shape
 2026-11-05  WS-01.2  API-03, API-04, API-05, API-97 ticked (audit logger created but unused); new `app.ts`, `errors.ts`, `logger.ts`, `rateLimit.ts`, `requestId.ts`, `validate.ts`, `schemas/`; `index.ts` graceful shutdown; helmet 8.3.0, express-rate-limit 8.7.3, pino 10.4.0, pino-http 11.0.0, pino-pretty 13.2.0 added (lockfile checked); findings: 400-vs-500 for library 4xx, minor logging/limiter items (see 3.A2); API-96 stays open (tsc 89 errors, all TS1295/TS1287)  - verified by: reading all src files and tests, `docker compose exec api npm test` 3 suites 39/39, `npx tsc --noEmit` 89 errors all TS1295/TS1287, grep: only two console.error in env.ts, no req.body logging; NOT verified: real DB boot, Render proxy hops, browser CORS, shutdown signals, pino-pretty
 
 2026-11-01  re-plan  v2-first re-plan approved by the user; no API step changes (WS-01.2 onward unchanged); docs only  - verified by: not applicable (no code touched)

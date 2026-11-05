@@ -22,6 +22,7 @@ const { createApp } = await import("../src/app.js");
 const { createLimiter } = await import("../src/middlewares/rateLimit.js");
 const { parseCorsOrigins, envSchema } = await import("../src/config/env.js");
 const { createLoggerWithStream } = await import("../src/logger.js");
+const { errorHandler, toLoggableError } = await import("../src/middlewares/errorHandler.js");
 
 const app = createApp();
 
@@ -203,6 +204,64 @@ describe("error handler", () => {
   });
 });
 
+describe("client error statuses", () => {
+  it("returns 400 for a malformed percent escape without echoing input", async () => {
+    const res = await request(app).get("/api/projects/%E0%A4%A");
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toBe("Bad request");
+    expect(res.text).not.toContain("%E0");
+    expect(res.text).not.toMatch(/URI|decode/i);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  const appWith = (thrown: unknown): express.Express => {
+    const a = express();
+    a.get("/", () => {
+      throw thrown;
+    });
+    a.use(errorHandler);
+    return a;
+  };
+
+  it("maps an exposed 4xx error to a generic message, never err.message", async () => {
+    const err = Object.assign(new Error("secret-user-input"), { status: 415, expose: true });
+    const res = await request(appWith(err)).get("/");
+    expect(res.status).toBe(415);
+    expect(res.body).toEqual({ success: false, error: "Unsupported media type" });
+    expect(res.text).not.toContain("secret-user-input");
+  });
+
+  it("keeps 500 generic for 5xx and for non-exposed 4xx errors", async () => {
+    const five = Object.assign(new Error("boom detail"), { status: 503, expose: true });
+    const res5 = await request(appWith(five)).get("/");
+    expect(res5.status).toBe(500);
+    expect(res5.body.error).toBe("Internal server error");
+    const hidden = Object.assign(new Error("boom detail"), { status: 400 });
+    const res4 = await request(appWith(hidden)).get("/");
+    expect(res4.status).toBe(500);
+    expect(res4.text).not.toContain("boom detail");
+  });
+});
+
+describe("loggable errors", () => {
+  it("omits the stack in production and keeps it otherwise", () => {
+    const err = new Error("connect ECONNREFUSED db.internal.example:5432");
+    const chunks: string[] = [];
+    const stream = new Writable({
+      write(chunk: Buffer, _enc, cb) {
+        chunks.push(chunk.toString());
+        cb();
+      },
+    });
+    createLoggerWithStream("info", stream).error({ err: toLoggableError(err, true) }, "x");
+    const entry = JSON.parse(chunks.join("")) as { err: { stack?: string } };
+    expect(entry.err.stack ?? "").toBe("");
+    expect(chunks.join("")).toContain("ECONNREFUSED");
+    expect(toLoggableError(err, false)).toBe(err);
+  });
+});
+
 describe("rate limiting", () => {
   it("createLimiter returns a uniform 429 with rate-limit headers", async () => {
     const small = express();
@@ -223,6 +282,12 @@ describe("rate limiting", () => {
 describe("health", () => {
   it("/health works without a DB call", async () => {
     const res = await request(app).get("/health");
+    expect(res.status).toBe(200);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("/health/ behaves like /health", async () => {
+    const res = await request(app).get("/health/");
     expect(res.status).toBe(200);
     expect(mockQuery).not.toHaveBeenCalled();
   });

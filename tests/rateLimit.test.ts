@@ -31,6 +31,7 @@ describe("app rate limits", () => {
   it("never rate limits /health but limits /health/db globally", async () => {
     for (let i = 0; i < 10; i += 1) {
       expect((await request(app).get("/health")).status).toBe(200);
+      expect((await request(app).get("/health/")).status).toBe(200);
     }
     mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
     const statuses: number[] = [];

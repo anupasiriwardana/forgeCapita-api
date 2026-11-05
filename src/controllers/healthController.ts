@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { pool } from "../db/pool.js";
+import { toLoggableError } from "../middlewares/errorHandler.js";
 import { logger } from "../logger.js";
 import type { ApiResponse } from "../types/index.js";
 
@@ -26,7 +27,7 @@ export async function databaseHealth(req: Request, res: Response): Promise<void>
       data: { status: "ok", database: "connected" },
     } satisfies ApiResponse);
   } catch (err) {
-    (req.log ?? logger).error({ err }, "database health check failed");
+    (req.log ?? logger).error({ err: toLoggableError(err) }, "database health check failed");
     res.status(503).json({
       success: false,
       error: "Database unavailable",
