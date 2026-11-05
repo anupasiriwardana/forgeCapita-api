@@ -6,7 +6,7 @@
 **Port:** 3001  
 **Last Updated:** 2026-11-05  
 
-**Current focus:** Step: WS-01.3a (API-06, API-07 first part) | State: awaiting-review | Updated: 2026-11-05  
+**Current focus:** Step: WS-01.3a (API-06, API-07 first part) | State: idle (reviewed, committed, migration applied; user-reported 2026-11-05). Next: WS-01.3b, not started | Updated: 2026-11-05  
 
 ---
 
@@ -22,7 +22,7 @@ Currently, basic server setup, PostgreSQL pool connections, startup profile upse
 
 - **Database Connection & Initialization:**
   - `src/db/pool.ts` connects cleanly to the Neon PostgreSQL instance with SSL.
-  - (2026-11-05, WS-01.3a, awaiting review) The API no longer creates tables on boot: `src/index.ts` only verifies that every file in `migrations/` is applied (read-only) and exits 1 with `Run: npm run migrate` otherwise. Schema changes go through `npm run migrate` / `migrate:status` (`src/db/migrationRunner.ts`, `migrate.ts`; `app.schema_migrations` with checksums, advisory lock 727361001, one transaction per file). `001` creates schema `app`; `002` moves `public.startup_profiles` into `app` (or creates it), converts `created_at` to timestamptz, adds `updated_at` with trigger and 8 CHECK constraints. Ponder tables are read via `"<PONDER_SCHEMA>"."project"`. NOT APPLIED to the real database yet (USER-ACTION, see backlog API-06).
+  - (2026-11-05, WS-01.3a, awaiting review) The API no longer creates tables on boot: `src/index.ts` only verifies that every file in `migrations/` is applied (read-only) and exits 1 with `Run: npm run migrate` otherwise. Schema changes go through `npm run migrate` / `migrate:status` (`src/db/migrationRunner.ts`, `migrate.ts`; `app.schema_migrations` with checksums, advisory lock 727361001, one transaction per file). `001` creates schema `app`; `002` moves `public.startup_profiles` into `app` (or creates it), converts `created_at` to timestamptz, adds `updated_at` with trigger and 8 CHECK constraints. Ponder tables are read via `"<PONDER_SCHEMA>"."project"`. APPLIED to the real Neon database 2026-11-05 (user-reported, not verified by Claude): `migrate` applied 001 and 002, `migrate:status` 2 applied / 0 pending / 0 mismatched / 0 without file, `/health/db` ok after restart; `public.startup_profiles` had 0 rows before the move and `public` is now empty; Neon schemas: public, app, ponder, ponder_rpc_cache_1. A Render deployment needs `npm run migrate` as a pre-deploy step.
 - **Health Check Endpoint:**
   - `GET /health` verifies server uptime and database connectivity.
 - **Unified Projects Querying (The SQL JOIN):**
@@ -111,12 +111,14 @@ The backlog was rewritten to a production-grade plan. Key changes from what this
 ## 6. Summary Checklist of Next Steps
 
 1. [x] API-01 remove the broken Paymaster mount; API-02 zod env validation (done 2026-11-01; user must check `.env` DATABASE_URL scheme).
-2. [ ] API-03 to API-05 and API-97 done and committed. WS-01.3a (API-06 code, API-07 first part) done 2026-11-05, awaiting review; then the USER-ACTION migration (backlog API-06); then WS-01.3b (API-07 rest, API-08), then API-09/API-10.
+2. [ ] API-03 to API-05 and API-97 done and committed. WS-01.3a (API-06, API-07 first part) done, committed and migration applied 2026-11-05 (user-reported); API-98 README fix (bash vs sh, `npm run migrate:status`) open; next WS-01.3b (API-07 rest, API-08), then API-09/API-10.
 3. [ ] `[USER-ACTION]` API-16 / API-17: email provider and admin bootstrap, then API-11 to API-22 accounts and roles.
 4. [ ] API-30 to API-40 application, KYC, agreement and repo workflow.
 5. [ ] After contracts v2 are deployed: API-70 to API-80 relayer.
 
 ## Change log
+
+2026-11-05  WS-01.3a migration applied  API-06 fully ticked (finding 1 resolved: 0 legacy rows; findings 2-5 minor open); API-07 stays open (chain_id join, WS-01.3b); new API-98 (README: container has only sh, use `docker compose exec api sh` or `exec -T api npm run migrate`; `npm run migrate:status`)  - verified by: USER REPORT only (migrate output "Migrations complete: 2 applied", migrate:status "2 applied, 0 pending, 0 mismatched, 0 without file", /health/db ok, Neon schemas public (empty)/app/ponder/ponder_rpc_cache_1); not verified by Claude (no DB access by design)
 
 2026-11-05  WS-01.3a  API-06 ticked as code-done (real DB application NOT verified); API-07 first part done, item stays open (chain_id join -> WS-01.3b); API-96 count now 110 (70 TS1295 + 40 TS1287); new migrations/001, 002, src/db/migrationRunner.ts, migrate.ts; pool.ts `qualified()`, env.ts `PONDER_SCHEMA`, index.ts boot verify, projectService qualification, README, .env.example; findings in 3.A3  - verified by: reading all listed files, `docker compose exec -T api npm test` 84/84 (5 suites), `docker compose exec -T api npx tsc --noEmit` 110 errors all TS1295/TS1287 with per-file counts; NOT verified: any SQL on a real Postgres, `npm run migrate` (never run by tracker), boot against Neon
 2026-11-05  WS-01.2 follow-up  errorHandler honours 4xx only with expose===true or URIError (generic messages), toLoggableError, /health/ exemption, .gitattributes (`* text=auto eol=lf`; user runs `git add --renormalize .`, existing files may show as modified once); tests 44; tsc 91 (+2 = new import/export, API-96)  - verified by: reading errorHandler/healthController/app diffs, `docker compose exec -T api npm test` 44/44, `npx tsc --noEmit` 91 all TS1295/TS1287 listed per file; NOT verified: live production log shape
