@@ -32,11 +32,11 @@ export interface CreateProfileBody {
   projectId: string;
   name: string;
   description: string;
-  logoUrl?: string;
-  pitchDeckUrl?: string;
-  founderBio?: string;
-  websiteUrl?: string;
-  shadowWallet?: string;
+  logoUrl?: string | undefined;
+  pitchDeckUrl?: string | undefined;
+  founderBio?: string | undefined;
+  websiteUrl?: string | undefined;
+  shadowWallet?: string | undefined;
 }
 
 // ─── Standard API Response ───────────────────────────────────────────────────

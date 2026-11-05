@@ -44,26 +44,34 @@ beforeEach(() => {
 // 1. GET /health
 // ─────────────────────────────────────────────────────────────────────────────
 describe("GET /health", () => {
-  it("returns 200 with API running status when DB is reachable", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-
+  it("returns 200 liveness without touching the DB", async () => {
     const res = await request(app).get("/health");
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(res.body.data).toMatchObject({
-      status: "API is running",
-      database: "Connected",
-    });
+    expect(res.body.data.status).toBe("ok");
+    expect(typeof res.body.data.uptime).toBe("number");
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /health/db", () => {
+  it("returns 200 when the DB is reachable", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    const res = await request(app).get("/health/db");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({ status: "ok", database: "connected" });
   });
 
-  it("returns 500 when the DB query throws", async () => {
+  it("returns 503 without error text when the DB query throws", async () => {
     mockQuery.mockRejectedValueOnce(new Error("DB unavailable"));
 
-    const res = await request(app).get("/health");
+    const res = await request(app).get("/health/db");
 
-    expect(res.status).toBe(500);
-    expect(res.body.success).toBe(false);
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ success: false, error: "Database unavailable" });
   });
 });
 
@@ -115,7 +123,9 @@ describe("POST /api/projects/profile", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
-    expect(res.body.error).toMatch(/required/i);
+    expect(res.body.error).toBe("Validation failed");
+    expect(Array.isArray(res.body.details)).toBe(true);
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("returns 500 when the DB throws during upsert", async () => {

@@ -4,9 +4,9 @@
 **Runtime:** Node.js 22 / Express.js / TypeScript  
 **Database:** Neon PostgreSQL (Shared with Ponder Indexer)  
 **Port:** 3001  
-**Last Updated:** 2026-11-01  
+**Last Updated:** 2026-11-05  
 
-**Current focus:** Step: none (WS-01.1 reviewed and committed; next api step WS-01.2) | State: idle | Updated: 2026-11-01  
+**Current focus:** Step: WS-01.2 (API-03, API-04, API-05, API-97) | State: awaiting-review | Updated: 2026-11-05  
 
 ---
 
@@ -32,13 +32,20 @@ Currently, basic server setup, PostgreSQL pool connections, startup profile upse
   - `POST /api/projects/profile`: Upserts startup metadata (`name`, `description`, `logo_url`, `pitch_deck_url`, `founder_bio`, `website_url`, `shadow_wallet`) using `ON CONFLICT (project_id) DO UPDATE`.
 - **Environment validation (2026-11-01):** `src/config/env.ts` validates `DATABASE_URL` (postgres(ql)://), `PORT` (1..65535, default 3001) and `NODE_ENV` with zod at boot; invalid config prints variable names only and exits 1. `src/index.ts` and `src/db/pool.ts` use it.
 - **Paymaster removed (2026-11-01):** routes, controller and service deleted; replaced later by the relayer (API-70+).
+- **Hardening (2026-11-05, WS-01.2, awaiting review):** `src/app.ts` (`createApp()`, no port bound) with request id, pino-http logging (path without query), helmet (CSP `default-src 'none'`, HSTS in production), exact-match CORS allow-list (no credentials; no-Origin allowed; foreign Origin gets 403 on every route; preflight 204), global rate limit (120/min) plus 10/min on `POST /api/projects/profile`, `/health` exempt, `/health/db` limited, JSON body limit (`BODY_LIMIT`), strict zod validation (`src/schemas`, `src/middlewares/validate.ts`), uniform error body with no stack/SQL/host in any NODE_ENV (`errorHandler.ts`), pino redaction, graceful shutdown (server close, pool end, 10 s hard timeout), `dotenv` quiet. SQL and pg `ssl` option untouched.
+- **Operations before production:** restart the api container (the compose service runs `tsx watch`, which may already have reloaded); set `CORS_ORIGINS` (required and non-empty in production) and `TRUST_PROXY=1` behind Render (with 0 all clients share the proxy IP and one global bucket); `.env.example` documents all new variables.
 
 ---
 
 ## 3. Critical Issues & Immediate Blockers
 
 ### A. Typecheck tooling (API-96)
-- `npx tsc --noEmit` reports 41 TS1295/TS1287 errors (CommonJS package vs NodeNext + verbatimModuleSyntax). Predates WS-01.1; tsx and jest work. User decision needed.
+- `npx tsc --noEmit` reports 89 TS1295/TS1287 errors (41 before WS-01.2; the new files add the same kind; nothing else is reported, so real type errors are hidden). CommonJS package vs NodeNext + verbatimModuleSyntax. tsx and jest work. User decision needed.
+
+### A2. Findings from the WS-01.2 close (2026-11-05)
+- Bare 4xx errors from libraries become 500 (e.g. `URIError` with `status 400` from the Express 5 router on a bad `%` escape in a path). Recommended small fix, user decision pending: honour numeric `status`/`statusCode` 400-499 with `expose === true`, generic message per status.
+- Minor: `/health/db` logs the full pg error in production; redaction covers one nesting level; `/health/` with trailing slash is not exempt from the limiter or request log filter; preflights are not rate limited; express-rate-limit prints its own console warning if `X-Forwarded-For` arrives while `TRUST_PROXY=0`; LF files will be shown as CRLF-converted by git (cosmetic, no `.gitattributes`).
+- Audit logging: `auditLogger` exists, nothing writes to it yet.
 
 ### B. Missing `status` Column in `startup_profiles`
 - **Status:** **HIGH PRIORITY** ⚠️
@@ -95,12 +102,14 @@ The backlog was rewritten to a production-grade plan. Key changes from what this
 ## 6. Summary Checklist of Next Steps
 
 1. [x] API-01 remove the broken Paymaster mount; API-02 zod env validation (done 2026-11-01; user must check `.env` DATABASE_URL scheme).
-2. [ ] API-03 to API-10 hardening (next: WS-01.2), migrations (API tables in schema `app`), pagination, readiness.
+2. [ ] API-03 to API-05 and API-97 done 2026-11-05 (awaiting review); next API-06 to API-08 (WS-01.3: migrations, `app` schema, pagination), then API-09/API-10 readiness and versioning.
 3. [ ] `[USER-ACTION]` API-16 / API-17: email provider and admin bootstrap, then API-11 to API-22 accounts and roles.
 4. [ ] API-30 to API-40 application, KYC, agreement and repo workflow.
 5. [ ] After contracts v2 are deployed: API-70 to API-80 relayer.
 
 ## Change log
+
+2026-11-05  WS-01.2  API-03, API-04, API-05, API-97 ticked (audit logger created but unused); new `app.ts`, `errors.ts`, `logger.ts`, `rateLimit.ts`, `requestId.ts`, `validate.ts`, `schemas/`; `index.ts` graceful shutdown; helmet 8.3.0, express-rate-limit 8.7.3, pino 10.4.0, pino-http 11.0.0, pino-pretty 13.2.0 added (lockfile checked); findings: 400-vs-500 for library 4xx, minor logging/limiter items (see 3.A2); API-96 stays open (tsc 89 errors, all TS1295/TS1287)  - verified by: reading all src files and tests, `docker compose exec api npm test` 3 suites 39/39, `npx tsc --noEmit` 89 errors all TS1295/TS1287, grep: only two console.error in env.ts, no req.body logging; NOT verified: real DB boot, Render proxy hops, browser CORS, shutdown signals, pino-pretty
 
 2026-11-01  re-plan  v2-first re-plan approved by the user; no API step changes (WS-01.2 onward unchanged); docs only  - verified by: not applicable (no code touched)
 2026-11-01  WS-01.1  API-01 paymaster removed; API-02 zod env config (src/config/env.ts), zod added, jest setupEnv; new backlog API-96 (tsc TS1295 tooling, predates step), API-97 (dotenv log line)  - verified by: npm test 8/8, grep for paymaster/TREASURY_PRIVATE_KEY clean, negative boots (bad URL, PORT=0, bad NODE_ENV) exit 1; npx tsc --noEmit still 41 TS1295/TS1287 errors (pre-existing); "required" branch and valid-env boot against a real DB not verified by tracker

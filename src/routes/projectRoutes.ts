@@ -1,26 +1,36 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import {
   createOrUpdateProfile,
   getProject,
   getProjects,
 } from "../controllers/projectController.js";
+import { validate } from "../middlewares/validate.js";
+import {
+  listProjectsQuerySchema,
+  profileBodySchema,
+  projectIdParamsSchema,
+} from "../schemas/projectSchemas.js";
 
-const router = Router();
+/** Builds the project router; the stricter write limiter is injected by createApp. */
+export function createProjectRoutes(profileLimiter: RequestHandler): Router {
+  const router = Router();
 
-/**
- * POST /api/projects/profile
- * Must be declared BEFORE the /:projectId wildcard to avoid route shadowing.
- */
-router.post("/profile", createOrUpdateProfile);
+  /**
+   * POST /api/projects/profile
+   * Must be declared BEFORE the /:projectId wildcard to avoid route shadowing.
+   */
+  router.post(
+    "/profile",
+    profileLimiter,
+    validate({ body: profileBodySchema }),
+    createOrUpdateProfile
+  );
 
-/**
- * GET /api/projects
- */
-router.get("/", getProjects);
+  /** GET /api/projects */
+  router.get("/", validate({ query: listProjectsQuerySchema }), getProjects);
 
-/**
- * GET /api/projects/:projectId
- */
-router.get("/:projectId", getProject);
+  /** GET /api/projects/:projectId */
+  router.get("/:projectId", validate({ params: projectIdParamsSchema }), getProject);
 
-export default router;
+  return router;
+}

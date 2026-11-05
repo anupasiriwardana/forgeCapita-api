@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import { config } from "../config/env.js";
+import { logger } from "../logger.js";
 
 /**
  * Shared PostgreSQL connection pool.
@@ -33,5 +34,5 @@ export async function initDb(): Promise<void> {
   `;
 
   await pool.query(sql);
-  console.log("✅ DB schema verified — startup_profiles table is ready.");
+  logger.info("DB schema verified: startup_profiles table is ready");
 }

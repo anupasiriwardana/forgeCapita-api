@@ -4,29 +4,23 @@ import {
   getProjectById,
   getAllProjects,
 } from "../services/projectService.js";
-import type { CreateProfileBody, ApiResponse } from "../types/index.js";
+import type { ValidatedRequest } from "../middlewares/validate.js";
+import type { ProfileBody, ProjectIdParams } from "../schemas/projectSchemas.js";
+import type { ApiResponse } from "../types/index.js";
+
+function validatedOf(res: Response): ValidatedRequest {
+  return res.locals["validated"] as ValidatedRequest;
+}
 
 // ─── POST /api/projects/profile ──────────────────────────────────────────────
 
 export async function createOrUpdateProfile(
-  req: Request,
+  _req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> {
   try {
-    const body = req.body as CreateProfileBody;
-    const { projectId, name, description } = body;
-
-    // Basic required-field guard
-    if (!projectId || !name || !description) {
-      res.status(400).json({
-        success: false,
-        error: "projectId, name, and description are required.",
-      } satisfies ApiResponse);
-      return;
-    }
-
-    const saved = await upsertProfile(body);
+    const saved = await upsertProfile(validatedOf(res).body as ProfileBody);
 
     res.status(201).json({
       success: true,
@@ -46,13 +40,13 @@ export async function getProject(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { projectId } = req.params as { projectId: string };
+    const { projectId } = validatedOf(res).params as ProjectIdParams;
     const project = await getProjectById(projectId);
 
     if (!project) {
       res.status(404).json({
         success: false,
-        error: `Project with id '${projectId}' not found.`,
+        error: "Project not found.",
       } satisfies ApiResponse);
       return;
     }
