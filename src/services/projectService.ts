@@ -148,6 +148,7 @@ async function resolveWallet(ref: WalletReference, user: AuthUser): Promise<Wall
   if (!wallet || (!isStaff(user) && wallet.userId !== user.id)) {
     throw new AppError(400, "Shadow wallet not available");
   }
+  if (wallet.reserved) throw new AppError(409, "Shadow wallet is already bound to a project");
   return { walletId: wallet.id, address: wallet.address };
 }
 

@@ -17,6 +17,7 @@ import { createAdminRoutes } from "./routes/adminRoutes.js";
 import { createAdminApplicationRoutes, createApplicationRoutes } from "./routes/applicationRoutes.js";
 import { createAdminShadowWalletRoutes, createAgreementRoutes, createFounderRoutes } from "./routes/founderRoutes.js";
 import { createAuthRoutes } from "./routes/authRoutes.js";
+import { createDraftRoutes } from "./routes/draftRoutes.js";
 import { createProjectRoutes } from "./routes/projectRoutes.js";
 
 const allowedOrigins: ReadonlySet<string> = new Set(config.CORS_ORIGINS);
@@ -135,6 +136,11 @@ export function createApp(): Express {
     windowMs: config.RATE_LIMIT_WINDOW_MS,
     max: config.PROFILE_RATE_LIMIT_MAX,
   });
+  const draftLimiter = createLimiter({
+    windowMs: config.RATE_LIMIT_WINDOW_MS,
+    max: config.PROFILE_RATE_LIMIT_MAX,
+  });
+  app.use("/api/v1/launch-drafts", createDraftRoutes(draftLimiter));
   app.use("/api/v1/agreement", createAgreementRoutes());
   app.use("/api/v1/founders", createFounderRoutes(founderLimiter));
   app.use("/api/v1/admin/shadow-wallets", createAdminShadowWalletRoutes(reviewLimiter));

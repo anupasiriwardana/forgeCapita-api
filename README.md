@@ -99,6 +99,19 @@ Run `npm run migrate` for migration 007. The agreement text lives in `legal/` (p
 | `GET /api/v1/founders/me/launch-eligibility` | signed in | `{eligible,checks}` (application approved, agreement accepted, shadow wallet approved) |
 | `GET /api/v1/admin/shadow-wallets?status&limit&offset`, `POST .../:id/approve` `{note?}`, `POST .../:id/reject` `{note}` | `admin`, `staff` | Review; pending only, not one's own (`403`), single audited statement |
 
+## Launch drafts
+
+Run `npm run migrate` for migration 009. The profile and the shadow wallet reservation are saved BEFORE the on-chain launch; after launching, the client attaches the escrow address and a background job applies the draft to `startup_profiles` once the indexer has the project and its developer matches the draft's wallet.
+
+| Endpoint | Access | Purpose |
+|---|---|---|
+| `POST /api/v1/launch-drafts` `{chainId,name,description,founderBio?,logoUrl?,websiteUrl?,pitchDeckUrl?,category?,shadowWalletId?}` | `founder`, `staff`, `admin` | Create a pending draft (`201`). Founders must be eligible (`403`) and send an own approved, free wallet (`400` unavailable, `409` reserved or bound) |
+| `POST /api/v1/launch-drafts/:id/attach` `{escrowAddress}` | owner | Pending to attached (idempotent for the same address; `409` other address or project taken); applies immediately when already indexed |
+| `POST /api/v1/launch-drafts/:id/cancel` | owner | Pending only (`409` once attached); releases the wallet |
+| `GET /api/v1/launch-drafts/mine` | signed in | Own drafts, newest first (20) |
+
+Reconcile job: every `DRAFT_RECONCILE_INTERVAL_MS` (default `15000`, minimum `5000`; not started when `NODE_ENV=test`) under a Postgres advisory lock. Matched drafts become `applied` (`conflict` when a profile already exists for the project); pending drafts older than 7 days become `expired`. `GET /founders/me` wallets carry `reserved`.
+
 ## Probes, versioning and OpenAPI
 
 - `GET /health` is liveness; `GET /ready` returns `200` when the DB is reachable and every migration is applied, else `503 {"success":false,"error":"Not ready"}`. Both are exempt from rate limiting and request logs. Indexer reachability is deferred (the API has no indexer URL; both share the same Neon DB).

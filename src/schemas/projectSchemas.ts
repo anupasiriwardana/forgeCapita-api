@@ -29,7 +29,7 @@ const projectIdSchema = z
     return `${Number(chain)}:${escrow.toLowerCase()}`;
   });
 
-const httpUrlSchema = z
+export const httpUrlSchema = z
   .string()
   .max(2048)
   .refine(
@@ -44,7 +44,7 @@ const httpUrlSchema = z
     { message: "Must be a valid http(s) URL" }
   );
 
-const categorySchema = z.string().regex(CATEGORY_REGEX, "Invalid category");
+export const categorySchema = z.string().regex(CATEGORY_REGEX, "Invalid category");
 
 export const projectIdParamsSchema = z.object({ projectId: projectIdSchema }).strict();
 
@@ -91,16 +91,21 @@ export const listProjectsQuerySchema = z
   })
   .strict();
 
+/** Profile content fields shared by the profile body and the launch draft body. */
+export const profileFieldsShape = {
+  name: z.string().trim().min(1).max(120),
+  description: z.string().trim().min(1).max(5000),
+  founderBio: z.string().max(5000).optional(),
+  logoUrl: httpUrlSchema.optional(),
+  pitchDeckUrl: httpUrlSchema.optional(),
+  websiteUrl: httpUrlSchema.optional(),
+  category: categorySchema.optional(),
+};
+
 export const profileBodySchema = z
   .object({
     projectId: projectIdSchema,
-    name: z.string().trim().min(1).max(120),
-    description: z.string().trim().min(1).max(5000),
-    founderBio: z.string().max(5000).optional(),
-    logoUrl: httpUrlSchema.optional(),
-    pitchDeckUrl: httpUrlSchema.optional(),
-    websiteUrl: httpUrlSchema.optional(),
-    category: categorySchema.optional(),
+    ...profileFieldsShape,
     shadowWallet: z.string().regex(ADDRESS_REGEX, "Invalid wallet address").optional(),
     shadowWalletId: z.string().uuid().optional(),
   })

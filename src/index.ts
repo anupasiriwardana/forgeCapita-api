@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { MigrationError, verifyMigrationsApplied } from "./db/migrationRunner.js";
 import { pool } from "./db/pool.js";
 import { logger } from "./logger.js";
+import { startReconcileJob } from "./drafts/reconcile.js";
 import { toLoggableError } from "./middlewares/errorHandler.js";
 
 const app = createApp();
@@ -34,6 +35,8 @@ async function boot(): Promise<void> {
   server.keepAliveTimeout = 65_000;
   server.headersTimeout = 66_000;
 
+  const stopReconcile = startReconcileJob();
+
   process.on("unhandledRejection", (reason) => {
     logger.fatal({ err: reason }, "Unhandled promise rejection");
     process.exit(1);
@@ -55,8 +58,8 @@ async function boot(): Promise<void> {
 
     server.close((closeErr) => {
       if (closeErr) logger.error({ err: closeErr }, "Error closing HTTP server");
-      pool
-        .end()
+      (stopReconcile ? stopReconcile() : Promise.resolve())
+        .then(() => pool.end())
         .then(() => process.exit(0))
         .catch((err: unknown) => {
           logger.error({ err }, "Error closing database pool");

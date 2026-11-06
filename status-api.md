@@ -4,9 +4,13 @@
 **Runtime:** Node.js 22 / Express.js / TypeScript  
 **Database:** Neon PostgreSQL (Shared with Ponder Indexer)  
 **Port:** 3001  
-**Last Updated:** 2026-11-06  
+**Last Updated:** 2026-11-07  
 
-**Current focus:** Step: WS-07.5a (shadow wallet pool, per-project binding, profile eligibility gate, migration 008) | State: awaiting-review | Updated: 2026-11-06
+**Current focus:** Step: WS-07.7 (draft TTL 7 days, reconcile shutdown race fix; frontend /launches) | State: awaiting-review | Updated: 2026-11-07. USER-ACTION: `docker compose restart api` (no migrations). Draft flow user-reported working end to end after the SQL hotfix (not verified by Claude). Profile application by the reconcile job not explicitly confirmed.
+
+**WS-07.6a done (tracker-verified by reading migration 009, reconcile.ts, draftService.ts, draftRoutes.ts, founderRepository diff; `docker compose exec -T api npm test` 10 suites 211/211; tsc only TS1295/TS1287; package files unchanged; NOT run on real Postgres).** Profile and shadow wallet reservation are saved BEFORE the on-chain launch (`/api/v1/launch-drafts`); after launch the escrow is attached and a 15 s reconcile job applies the profile once the indexer has the project and the developer matches (ponder `project.id` = `chainId:escrow`, `developer` column confirmed in ponder.schema.ts). Known gaps: attached drafts never expire if the developer never matches; a pending draft expires after 2 h (late confirmation needs ProfileEditor); see API-101..105. USER-ACTION after review/commit: `docker compose exec -T api npm run migrate` (expect 001-009), `docker compose exec -T api npm run migrate:status` (0 pending), `docker compose restart api`, GET /ready ok.
+
+(Previous focus: WS-07.5a, shadow wallet pool, migration 008, awaiting-review.)
 
 **WS-07.5a done (tracker-verified by reading migration 008, upsertProfile CTE, projectService binding flow, and `docker compose exec -T api npm test` 9 suites 188/188; tsc only TS1295/TS1287; package.json unchanged; NOT run on real Postgres).** A founder holds a pool of staff-approved wallets (one pending at a time); each project binds one approved wallet via `shadowWalletId` (or `shadowWallet`; both => 400), each wallet to at most one project; rebinding a different wallet 409; bind audited as `shadow_wallet.bind`; `GET /founders/me` returns `{agreement, wallets:[...]}`; the wallet is never in public DTOs. Non-staff/admin callers need an approved application + accepted agreement. KNOWN INTERIM BREAK: the existing frontend create-project page saves the profile without a wallet reference, so that save fails (403/400) until WS-07.5l lands; the on-chain launch is unaffected. USER-ACTION after review/commit: `docker compose exec -T api npm run migrate` (expect 001-008), `docker compose exec -T api npm run migrate:status` (0 pending), `docker compose restart api`, GET /ready ok.
 
@@ -144,6 +148,11 @@ Note: the list response is now `{ items, total, limit, offset }` (was a bare arr
 
 ## Change log
 
+2026-11-07  WS-07.7  PENDING_TTL 2 h -> 7 days; reconcile in-flight tracking and awaited stop on shutdown before pool.end() (API-108); README 7 days; API-102 updated  - verified by: code read of reconcile.ts and index.ts; `docker compose exec -T api npm test` 10 suites 211/211; tsc only known TS1295/TS1287; package files unchanged; restart behaviour not verified.
+
+2026-11-07  WS-07.6a hotfix  POST /launch-drafts 500 (`column "payload" does not exist`, 42703): CTE outer SELECTs in insertDraft/cancelPendingDraft now use OUTER_COLUMNS; backlog API-106 done, API-107 (real-Postgres smoke test) added  - verified by: code read of draftRepository.ts; api tests 211/211 per main session (not re-run); not yet re-run on real Postgres by the user. Lesson: mocked-pg tests do not prove SQL correctness.
+
+2026-11-06  WS-07.6a  Launch drafts: migration 009, `/api/v1/launch-drafts` (create/attach/cancel/mine), reconcile job with advisory lock and 2 h pending expiry, wallet reservation in founderRepository/projectService/founderController; tests/launchDrafts.test.ts (21)  - verified by: code read, api tests 211/211 in docker, tsc noise only; not run on real Postgres.
 2026-11-06  WS-07.5m  requestShadowWallet rejects 400 'Use a dedicated wallet, not your login wallet' when the address equals the user's login wallet (case-insensitive); +1 test in tests/founders.test.ts  - verified by: read founderService.ts, docker npm test 9 suites 189 pass, tsc known TS1287/TS1295 noise only; runtime NOT verified (needs `docker compose restart api`). Note: rule enforced only against the login wallet, not other founders' personal wallets
 2026-11-06  WS-07.5a  Shadow wallet pool, migration 008, per-project binding via `shadowWalletId` on `POST /projects/profile` with launch-eligibility enforced (API-WS07-h ticked, API-38 partial); new API-WS07-p..u  - verified by: read migration 008, upsertProfile CTE, projectService binding flow; npm test 188/188 in docker, tsc known TS1295/TS1287 only, package.json unchanged; not run on real Postgres
 2026-11-06  WS-07.2l  Agreement acceptance, shadow wallet request/approval, launch-eligibility, migration 007; API-WS07-d and API-34 ticked, API-33/38/39 partial; new API-WS07-i..o  - verified by: read migration/agreement/repository/service/routes, npm test 178/178 in docker, tsc known errors only; not run on real Postgres

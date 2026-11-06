@@ -280,8 +280,8 @@ describe("GET /api/v1/founders/me", () => {
       { rows: [{ agreement_version: "0.1", text_hash: "a".repeat(64), accepted_at: new Date(1_700_000_000_000) }], rowCount: 1 },
       {
         rows: [
-          { id: WALLET_ID, address: SHADOW, status: "approved", review_note: null, project_id: PROJECT },
-          { id: WALLET_ID_2, address: SHADOW_2, status: "pending", review_note: null, project_id: null },
+          { id: WALLET_ID, address: SHADOW, status: "approved", review_note: null, project_id: PROJECT, reserved: false },
+          { id: WALLET_ID_2, address: SHADOW_2, status: "pending", review_note: null, project_id: null, reserved: false },
         ],
         rowCount: 2,
       }
@@ -291,8 +291,8 @@ describe("GET /api/v1/founders/me", () => {
     expect(res.body.data).toEqual({
       agreement: { version: "0.1", acceptedAt: "2023-11-14T22:13:20.000Z" },
       wallets: [
-        { id: WALLET_ID, address: SHADOW, status: "approved", reviewNote: null, projectId: PROJECT },
-        { id: WALLET_ID_2, address: SHADOW_2, status: "pending", reviewNote: null, projectId: null },
+        { id: WALLET_ID, address: SHADOW, status: "approved", reviewNote: null, projectId: PROJECT, reserved: false },
+        { id: WALLET_ID_2, address: SHADOW_2, status: "pending", reviewNote: null, projectId: null, reserved: false },
       ],
     });
     mockSession(mockQuery, "founder", founder.address);

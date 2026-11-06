@@ -105,6 +105,7 @@ export async function getMe(req: Request, res: Response, next: NextFunction): Pr
           status: w.status,
           reviewNote: w.reviewNote,
           projectId: w.projectId,
+          reserved: w.reserved,
         })),
       },
     } satisfies ApiResponse);

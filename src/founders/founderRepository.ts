@@ -38,12 +38,18 @@ export interface OwnWalletRecord {
   status: WalletStatus;
   reviewNote: string | null;
   projectId: string | null;
+  /** True while an active (pending/attached) launch draft holds the wallet. */
+  reserved: boolean;
 }
 
 export interface ApprovedWallet {
   id: string;
   userId: string;
   address: string;
+  /** Held by an active launch draft. */
+  reserved: boolean;
+  /** Bound to a startup profile. */
+  bound: boolean;
 }
 
 export type WalletReference = { id: string } | { address: string };
@@ -84,12 +90,15 @@ interface OwnWalletRow {
   status: WalletStatus;
   review_note: string | null;
   project_id: string | null;
+  reserved: boolean;
 }
 
 interface ApprovedWalletRow {
   id: string;
   user_id: string;
   address: string;
+  reserved: boolean;
+  bound: boolean;
 }
 
 interface ReviewRow {
@@ -204,9 +213,11 @@ export async function insertShadowWallet(
 /** All wallets of a founder (newest first, bounded) with the project each one is bound to. */
 export async function listOwnWallets(userId: string): Promise<OwnWalletRecord[]> {
   const result = await pool.query<OwnWalletRow>(
-    `SELECT w.id, w.address, w.status, w.review_note, s.project_id
+    `SELECT w.id, w.address, w.status, w.review_note,
+       COALESCE(s.project_id, d.project_id) AS project_id, (d.id IS NOT NULL) AS reserved
      FROM app.founder_wallets w
      LEFT JOIN app.startup_profiles s ON s.founder_wallet_id = w.id
+     LEFT JOIN app.launch_drafts d ON d.founder_wallet_id = w.id AND d.status IN ('pending', 'attached')
      WHERE w.user_id = $1::uuid
      ORDER BY w.created_at DESC, w.id LIMIT 50`,
     [userId]
@@ -217,23 +228,38 @@ export async function listOwnWallets(userId: string): Promise<OwnWalletRecord[]>
     status: row.status,
     reviewNote: row.review_note,
     projectId: row.project_id,
+    reserved: row.reserved === true,
   }));
 }
+
+const APPROVED_WALLET_SELECT = `SELECT w.id, w.user_id, w.address,
+  EXISTS (SELECT 1 FROM app.launch_drafts d
+          WHERE d.founder_wallet_id = w.id AND d.status IN ('pending', 'attached')) AS reserved,
+  EXISTS (SELECT 1 FROM app.startup_profiles s WHERE s.founder_wallet_id = w.id) AS bound
+  FROM app.founder_wallets w`;
 
 /** Resolves an APPROVED wallet by id or lowercase address (approved addresses are unique). */
 export async function findApprovedWallet(ref: WalletReference): Promise<ApprovedWallet | null> {
   const result =
     "id" in ref
       ? await pool.query<ApprovedWalletRow>(
-          "SELECT id, user_id, address FROM app.founder_wallets WHERE id = $1::uuid AND status = 'approved'",
+          `${APPROVED_WALLET_SELECT} WHERE w.id = $1::uuid AND w.status = 'approved'`,
           [ref.id]
         )
       : await pool.query<ApprovedWalletRow>(
-          "SELECT id, user_id, address FROM app.founder_wallets WHERE address = $1::text AND status = 'approved'",
+          `${APPROVED_WALLET_SELECT} WHERE w.address = $1::text AND w.status = 'approved'`,
           [ref.address]
         );
   const row = result.rows[0];
-  return row ? { id: row.id, userId: row.user_id, address: row.address } : null;
+  return row
+    ? {
+        id: row.id,
+        userId: row.user_id,
+        address: row.address,
+        reserved: row.reserved === true,
+        bound: row.bound === true,
+      }
+    : null;
 }
 
 export async function findShadowWalletById(id: string): Promise<ShadowWalletRecord | null> {
@@ -337,6 +363,10 @@ export async function readLaunchChecks(userId: string, version: string): Promise
          SELECT 1 FROM app.founder_wallets w
          WHERE w.user_id = $1::uuid AND w.status = 'approved'
            AND NOT EXISTS (SELECT 1 FROM app.startup_profiles s WHERE s.founder_wallet_id = w.id)
+           AND NOT EXISTS (
+             SELECT 1 FROM app.launch_drafts d
+             WHERE d.founder_wallet_id = w.id AND d.status IN ('pending', 'attached')
+           )
        ) AS shadow_wallet_available`,
     [userId, version]
   );

@@ -70,6 +70,7 @@ export const envSchema = z
     RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(100_000).default(120),
     PROFILE_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(100_000).default(10),
     AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(100_000).default(10),
+    DRAFT_RECONCILE_INTERVAL_MS: z.coerce.number().int().min(5000).max(3_600_000).default(15_000),
     ADMIN_WALLETS: z.string().optional(),
     AUTH_DOMAIN: z
       .string()
