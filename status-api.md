@@ -8,6 +8,8 @@
 
 **Current focus:** Step: WS-06.2w (wallet sign-in, sessions, gated POST /profile) | State: awaiting-review | Updated: 2026-11-06
 
+**USER-CONFIRMED 2026-11-06 (not verified by Claude; `.env*` not read):** migration 004 applied (`migrate:status` shows 001-004 applied) and `ADMIN_WALLETS` configured in the api env file. Whether the api was restarted after setting `ADMIN_WALLETS` is NOT stated: restart it (`docker compose restart api`) before checking that the admin wallet gets the `admin` role.
+
 **User steps after review:** commit; the API reloads via tsx watch (or `docker compose restart api`); then `Invoke-RestMethod http://localhost:3001/ready` (expect success true), `Invoke-RestMethod "http://localhost:3001/api/v1/projects?limit=2"`, `Invoke-RestMethod "http://localhost:3001/api/projects?limit=2"`, `Invoke-RestMethod http://localhost:3001/api/v1/openapi.json`.
 
 **Minor finding (WS-01.4):** `createApp` builds one profile limiter per mount (`/api/v1/projects` and `/api/projects`), so `POST /profile` has two separate 10/min buckets per client: the write limit is effectively doubled for an abuser. Fix: create one `createLimiter(...)` instance before the loop and pass it to both `createProjectRoutes` calls (one line). Not fixed (tracker does not edit source).  
