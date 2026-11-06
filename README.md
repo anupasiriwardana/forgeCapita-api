@@ -86,6 +86,19 @@ Run `npm run migrate` for migration 006 (`app.founder_applications`; one open `p
 
 Approve/reject each run as one SQL statement (transition, role grant, session revocation and `application.approve` / `application.reject` / `role.change` audit rows). `404` unknown id, `409` not pending, `403` reviewing one's own application. `contact` is visible only to the applicant and staff/admin.
 
+## Founder agreement and shadow wallet
+
+Run `npm run migrate` for migration 007. The agreement text lives in `legal/` (placeholder draft, loaded once; the folder must ship with the API). Replay protection: the server builds the signed message (wallet included), `issuedAt` must be within 10 minutes of now, and `(user_id, agreement_version)` is unique.
+
+| Endpoint | Access | Purpose |
+|---|---|---|
+| `GET /api/v1/agreement` | public | `{version,textHash,text,messageTemplate}` (placeholders `{name}`, `{wallet}`, `{issuedAt}`) |
+| `POST /api/v1/founders/me/agreement` `{typedName,issuedAt,signature}` | `founder` | Verify the wallet signature, store acceptance (`201`; `400` bad signature/stale time; `409` already accepted) |
+| `POST /api/v1/founders/me/shadow-wallet` `{address}` | `founder` | Declare a shadow wallet (`409` if one is open) |
+| `GET /api/v1/founders/me` | `founder` | Agreement and latest shadow wallet |
+| `GET /api/v1/founders/me/launch-eligibility` | signed in | `{eligible,checks}` (application approved, agreement accepted, shadow wallet approved) |
+| `GET /api/v1/admin/shadow-wallets?status&limit&offset`, `POST .../:id/approve` `{note?}`, `POST .../:id/reject` `{note}` | `admin`, `staff` | Review; pending only, not one's own (`403`), single audited statement |
+
 ## Probes, versioning and OpenAPI
 
 - `GET /health` is liveness; `GET /ready` returns `200` when the DB is reachable and every migration is applied, else `503 {"success":false,"error":"Not ready"}`. Both are exempt from rate limiting and request logs. Indexer reachability is deferred (the API has no indexer URL; both share the same Neon DB).

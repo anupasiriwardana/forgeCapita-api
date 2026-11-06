@@ -15,6 +15,7 @@ import healthRoutes from "./routes/healthRoutes.js";
 import { loadSession } from "./auth/middleware.js";
 import { createAdminRoutes } from "./routes/adminRoutes.js";
 import { createAdminApplicationRoutes, createApplicationRoutes } from "./routes/applicationRoutes.js";
+import { createAdminShadowWalletRoutes, createAgreementRoutes, createFounderRoutes } from "./routes/founderRoutes.js";
 import { createAuthRoutes } from "./routes/authRoutes.js";
 import { createProjectRoutes } from "./routes/projectRoutes.js";
 
@@ -130,6 +131,13 @@ export function createApp(): Express {
   });
   app.use("/api/v1/applications", createApplicationRoutes(applicationLimiter));
   app.use("/api/v1/admin/applications", createAdminApplicationRoutes(reviewLimiter));
+  const founderLimiter = createLimiter({
+    windowMs: config.RATE_LIMIT_WINDOW_MS,
+    max: config.PROFILE_RATE_LIMIT_MAX,
+  });
+  app.use("/api/v1/agreement", createAgreementRoutes());
+  app.use("/api/v1/founders", createFounderRoutes(founderLimiter));
+  app.use("/api/v1/admin/shadow-wallets", createAdminShadowWalletRoutes(reviewLimiter));
   app.use("/api/v1/admin", createAdminRoutes(adminLimiter));
 
   // /api/projects is a deprecated alias of /api/v1/projects. Both mounts share ONE profile limiter

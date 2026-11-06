@@ -6,7 +6,9 @@
 **Port:** 3001  
 **Last Updated:** 2026-11-06  
 
-**Current focus:** Step: WS-07.1l (founder applications + staff review, migration 006) | State: awaiting-review | Updated: 2026-11-06
+**Current focus:** Step: WS-07.2l (agreement acceptance, shadow wallet, launch-eligibility, migration 007) | State: awaiting-review | Updated: 2026-11-06
+
+**WS-07.2l done (tracker-verified by reading migration 007, agreement.ts, founderRepository.ts, founderService.ts, founderRoutes.ts, app.ts mounts, and `docker compose exec -T api npm test` 9 suites 178/178; tsc only TS1295/TS1287; package.json and `POST /projects/profile` untouched; NOT run on real Postgres).** Endpoints: `GET /api/v1/agreement`; founder `POST /api/v1/founders/me/agreement` (wallet signature, 10 min window, 409 on replay), `POST .../me/shadow-wallet`, `GET .../me`, `GET .../me/launch-eligibility`; staff/admin `GET /api/v1/admin/shadow-wallets`, `POST .../:id/approve|reject` (pending-only, FOR UPDATE, own wallet 403, audit rows). Agreement text is a DRAFT placeholder. openapi.ts not updated. USER-ACTION after review/commit: `docker compose exec -T api npm run migrate` (expect 001-007), `npm run migrate:status` (0 pending), `docker compose restart api`, GET /ready ok. No UI yet.
 
 **WS-07.1l done (tracker-verified by reading migration 006, repository CTEs, service, routes, schemas, and `docker compose exec -T api npm test` 8 suites 157/157; tsc only TS1295/TS1287; NOT run on real Postgres).** `POST /api/v1/applications`, `GET /api/v1/applications/mine`, staff/admin `GET /api/v1/admin/applications[/:id]`, `POST .../:id/approve` (needs `kycVerified: true`) and `/reject` (needs note). Single-statement CTEs, pending-only; approve grants `founder` only from `investor`, revokes sessions only when the role changed, audit rows application.approve/application.reject/role.change. Own application: 403 before 409. USER-ACTION after review/commit: `docker compose exec -T api npm run migrate` (expect 001-006), `npm run migrate:status` (0 pending), `docker compose restart api`, GET /ready ok. No UI yet.
 
@@ -134,6 +136,7 @@ Note: the list response is now `{ items, total, limit, offset }` (was a bare arr
 
 ## Change log
 
+2026-11-06  WS-07.2l  Agreement acceptance, shadow wallet request/approval, launch-eligibility, migration 007; API-WS07-d and API-34 ticked, API-33/38/39 partial; new API-WS07-i..o  - verified by: read migration/agreement/repository/service/routes, npm test 178/178 in docker, tsc known errors only; not run on real Postgres
 2026-11-06  WS-07.1l  Founder applications + staff review/KYC attestation, migration 006; API-WS07-a/b/c ticked; new API-WS07-e/f/g  - verified by: read migration/repository/service/routes/schemas, npm test 157/157 in container, tsc only TS1295/TS1287, package.json unchanged; Postgres runtime not verified
 2026-11-06  WS-07.1l  Selected (planning only): lean WS-07 plan, new backlog items API-WS07-a..d; no code changed  - verified by: n/a (docs only)
 2026-11-06  WS-06.7w  User reports migration 005 applied and step reviewed/committed  - verified by: user-reported, not verified
