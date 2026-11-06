@@ -27,6 +27,8 @@ const other = new Wallet("0x" + "00".repeat(31) + "04");
 const SESSION_USER_ID = "11111111-1111-1111-1111-111111111111";
 const WALLET_ID = "bbbbbbbb-0000-4000-8000-000000000001";
 const SHADOW = "0x" + "ab".repeat(20);
+const SHADOW_2 = "0x" + "ef".repeat(20);
+const WALLET_ID_2 = "bbbbbbbb-0000-4000-8000-000000000002";
 
 beforeEach(() => {
   mockQuery.mockReset();
@@ -262,23 +264,136 @@ describe("shadow wallet", () => {
 });
 
 describe("GET /api/v1/founders/me", () => {
-  it("returns the agreement and latest shadow wallet, or nulls", async () => {
+  it("returns the agreement and the wallet pool with bound projects, or empty", async () => {
+    const PROJECT = "421614:0x" + "cd".repeat(20);
     mockSession(
       mockQuery,
       "founder",
       founder.address,
       { rows: [{ agreement_version: "0.1", text_hash: "a".repeat(64), accepted_at: new Date(1_700_000_000_000) }], rowCount: 1 },
-      { rows: [walletRow()], rowCount: 1 }
+      {
+        rows: [
+          { id: WALLET_ID, address: SHADOW, status: "approved", review_note: null, project_id: PROJECT },
+          { id: WALLET_ID_2, address: SHADOW_2, status: "pending", review_note: null, project_id: null },
+        ],
+        rowCount: 2,
+      }
     );
     const res = await request(app).get("/api/v1/founders/me").set("Cookie", SESSION_COOKIE_HEADER);
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({
       agreement: { version: "0.1", acceptedAt: "2023-11-14T22:13:20.000Z" },
-      shadowWallet: { id: WALLET_ID, address: SHADOW, status: "pending", reviewNote: null },
+      wallets: [
+        { id: WALLET_ID, address: SHADOW, status: "approved", reviewNote: null, projectId: PROJECT },
+        { id: WALLET_ID_2, address: SHADOW_2, status: "pending", reviewNote: null, projectId: null },
+      ],
     });
     mockSession(mockQuery, "founder", founder.address);
     const empty = await request(app).get("/api/v1/founders/me").set("Cookie", SESSION_COOKIE_HEADER);
-    expect(empty.body.data).toEqual({ agreement: null, shadowWallet: null });
+    expect(empty.body.data).toEqual({ agreement: null, wallets: [] });
+  });
+});
+
+describe("POST /api/projects/profile wallet binding", () => {
+  const PROJECT = `421614:0x${"cd".repeat(20)}`;
+  const body = { projectId: PROJECT, name: "n", description: "d" };
+  const project = { rows: [{ developer: founder.address.toLowerCase() }], rowCount: 1 };
+  const checks = (a: boolean, g: boolean, w: boolean) => ({
+    rows: [{ application_approved: a, agreement_accepted: g, shadow_wallet_available: w }],
+    rowCount: 1,
+  });
+  const noBinding = { rows: [], rowCount: 0 };
+  const bound = (id: string) => ({ rows: [{ founder_wallet_id: id }], rowCount: 1 });
+  const wallet = (userId = SESSION_USER_ID, id = WALLET_ID) => ({
+    rows: [{ id, user_id: userId, address: SHADOW }],
+    rowCount: 1,
+  });
+  const saved = { rows: [{ name: "n", description: "d", updated_at: new Date(0) }], rowCount: 1 };
+  const profile = (b: object) => post("/api/projects/profile", b);
+  const eligible = checks(true, true, true);
+
+  it("binds an own approved wallet and audits the bind only on change", async () => {
+    const calls = mockSession(mockQuery, "founder", founder.address, project, noBinding, eligible, wallet(), saved);
+    const res = await profile({ ...body, shadowWalletId: WALLET_ID });
+    expect(res.status).toBe(201);
+    expect(res.text).not.toMatch(/shadow|founder_wallet/i);
+    const [sql, params] = calls()[4] as [string, unknown[]];
+    expect(sql).toContain("'shadow_wallet.bind'");
+    expect(sql).toContain("IS DISTINCT FROM");
+    expect(params.slice(10, 13)).toEqual([WALLET_ID, SHADOW, SESSION_USER_ID]);
+  });
+
+  it("resolves a wallet by lowercase address", async () => {
+    const calls = mockSession(mockQuery, "founder", founder.address, project, noBinding, eligible, wallet(), saved);
+    expect((await profile({ ...body, shadowWallet: "0x" + "AB".repeat(20) })).status).toBe(201);
+    expect(calls()[3]?.[1]).toEqual([SHADOW]);
+  });
+
+  it("rejects both references, a missing reference, and foreign or unapproved wallets", async () => {
+    mockSession(mockQuery, "founder", founder.address);
+    expect((await profile({ ...body, shadowWalletId: WALLET_ID, shadowWallet: SHADOW })).status).toBe(400);
+    mockSession(mockQuery, "founder", founder.address, project, noBinding, eligible);
+    const missing = await profile(body);
+    expect(missing.status).toBe(400);
+    expect(missing.body.error).toBe("shadowWalletId or shadowWallet is required");
+    mockSession(mockQuery, "founder", founder.address, project, noBinding, eligible, wallet("other-user"));
+    const foreign = await profile({ ...body, shadowWalletId: WALLET_ID });
+    expect(foreign.status).toBe(400);
+    expect(foreign.body.error).toBe("Shadow wallet not available");
+    mockSession(mockQuery, "founder", founder.address, project, noBinding, eligible, { rows: [], rowCount: 0 });
+    expect((await profile({ ...body, shadowWalletId: WALLET_ID })).status).toBe(400);
+  });
+
+  it("maps a wallet already bound to another project to 409", async () => {
+    mockSession(
+      mockQuery,
+      "founder",
+      founder.address,
+      project,
+      noBinding,
+      eligible,
+      wallet(),
+      Object.assign(new Error("dup"), { code: "23505", constraint: "startup_profiles_founder_wallet_uidx" })
+    );
+    expect((await profile({ ...body, shadowWalletId: WALLET_ID })).status).toBe(409);
+  });
+
+  it("founder cannot change an existing binding; resending the same wallet succeeds", async () => {
+    mockSession(mockQuery, "founder", founder.address, project, bound(WALLET_ID_2), checks(true, true, false), wallet());
+    const changed = await profile({ ...body, shadowWalletId: WALLET_ID });
+    expect(changed.status).toBe(409);
+    expect(changed.body.error).toBe("Project already has a shadow wallet");
+    mockSession(mockQuery, "founder", founder.address, project, bound(WALLET_ID), checks(true, true, false), wallet(), saved);
+    expect((await profile({ ...body, shadowWalletId: WALLET_ID })).status).toBe(201);
+  });
+
+  it("returns 403 naming the missing item when the founder is not eligible", async () => {
+    mockSession(mockQuery, "founder", founder.address, project, noBinding, checks(false, true, true));
+    const noApp = await profile({ ...body, shadowWalletId: WALLET_ID });
+    expect(noApp.status).toBe(403);
+    expect(noApp.body.error).toContain("application");
+    mockSession(mockQuery, "founder", founder.address, project, noBinding, checks(true, false, true));
+    expect((await profile({ ...body, shadowWalletId: WALLET_ID })).body.error).toContain("agreement");
+    mockSession(mockQuery, "founder", founder.address, project, noBinding, checks(true, true, false));
+    expect((await profile({ ...body, shadowWalletId: WALLET_ID })).body.error).toContain("shadow wallet");
+  });
+
+  it("text-only edit of a bound profile keeps the binding (COALESCE)", async () => {
+    const calls = mockSession(mockQuery, "founder", founder.address, project, bound(WALLET_ID), checks(true, true, false), saved);
+    expect((await profile(body)).status).toBe(201);
+    const [sql, params] = calls()[3] as [string, unknown[]];
+    expect(sql).toContain("COALESCE(EXCLUDED.founder_wallet_id, app.startup_profiles.founder_wallet_id)");
+    expect(sql).toContain("COALESCE(EXCLUDED.shadow_wallet, app.startup_profiles.shadow_wallet)");
+    expect(params[10]).toBeNull();
+    expect(params[11]).toBeNull();
+  });
+
+  it("staff skip ownership and eligibility but need an approved wallet", async () => {
+    const calls = mockSession(mockQuery, "staff", other.address, wallet("someone-else"), saved);
+    expect((await profile({ ...body, shadowWalletId: WALLET_ID })).status).toBe(201);
+    expect(calls()).toHaveLength(2);
+    mockSession(mockQuery, "staff", other.address, { rows: [], rowCount: 0 });
+    expect((await profile({ ...body, shadowWalletId: WALLET_ID })).status).toBe(400);
   });
 });
 
@@ -293,26 +408,26 @@ describe("GET /api/v1/founders/me/launch-eligibility", () => {
 
   it.each(cases)("app=%s agreement=%s wallet=%s -> eligible=%s", async (a, b, c, eligible) => {
     mockSession(mockQuery, "founder", founder.address, {
-      rows: [{ application_approved: a, agreement_accepted: b, shadow_wallet_approved: c }],
+      rows: [{ application_approved: a, agreement_accepted: b, shadow_wallet_available: c }],
       rowCount: 1,
     });
     const res = await request(app).get("/api/v1/founders/me/launch-eligibility").set("Cookie", SESSION_COOKIE_HEADER);
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({
       eligible,
-      checks: { applicationApproved: a, agreementAccepted: b, shadowWalletApproved: c },
+      checks: { applicationApproved: a, agreementAccepted: b, shadowWalletAvailable: c },
     });
   });
 
   it("gives a plain investor all false", async () => {
     mockSession(mockQuery, "investor", founder.address, {
-      rows: [{ application_approved: false, agreement_accepted: false, shadow_wallet_approved: false }],
+      rows: [{ application_approved: false, agreement_accepted: false, shadow_wallet_available: false }],
       rowCount: 1,
     });
     const res = await request(app).get("/api/v1/founders/me/launch-eligibility").set("Cookie", SESSION_COOKIE_HEADER);
     expect(res.body.data).toEqual({
       eligible: false,
-      checks: { applicationApproved: false, agreementAccepted: false, shadowWalletApproved: false },
+      checks: { applicationApproved: false, agreementAccepted: false, shadowWalletAvailable: false },
     });
   });
 });

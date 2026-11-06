@@ -120,7 +120,7 @@ describe("projectRepository SQL", () => {
       { id: "u", address: "0x" + "11".repeat(20), role: "staff" }
     );
     expect(sqlOf(0)).toContain("INSERT INTO app.startup_profiles");
-    expect(sqlOf(0)).toContain("category       = EXCLUDED.category");
+    expect(sqlOf(0)).toContain("category          = EXCLUDED.category");
     expect(sqlOf(0)).not.toContain("RETURNING *");
     expect(paramsOf(0).slice(0, 3)).toEqual([ID, 421614, ESCROW]);
   });

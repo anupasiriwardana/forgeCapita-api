@@ -86,6 +86,7 @@ export interface CreateProfileBody {
   websiteUrl?: string | undefined;
   category?: string | undefined;
   shadowWallet?: string | undefined;
+  shadowWalletId?: string | undefined;
 }
 
 // ─── Public Response Shapes ──────────────────────────────────────────────────

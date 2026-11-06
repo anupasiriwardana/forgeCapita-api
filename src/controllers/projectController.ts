@@ -26,7 +26,7 @@ export async function createOrUpdateProfile(
 ): Promise<void> {
   try {
     if (!req.user) throw new AppError(401, "Authentication required");
-    const saved = await upsertProfile(validatedOf(res).body as ProfileBody, req.user);
+    const saved = await upsertProfile(validatedOf(res).body as ProfileBody, req.user, req.ip ?? null);
 
     res.status(201).json({
       success: true,

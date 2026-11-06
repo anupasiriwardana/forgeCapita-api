@@ -102,8 +102,13 @@ export const profileBodySchema = z
     websiteUrl: httpUrlSchema.optional(),
     category: categorySchema.optional(),
     shadowWallet: z.string().regex(ADDRESS_REGEX, "Invalid wallet address").optional(),
+    shadowWalletId: z.string().uuid().optional(),
   })
-  .strict();
+  .strict()
+  .refine((body) => body.shadowWallet === undefined || body.shadowWalletId === undefined, {
+    message: "Send either shadowWallet or shadowWalletId, not both",
+    path: ["shadowWalletId"],
+  });
 
 export type ProfileBody = z.output<typeof profileBodySchema>;
 export type ProjectIdParams = z.output<typeof projectIdParamsSchema>;

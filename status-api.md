@@ -6,7 +6,15 @@
 **Port:** 3001  
 **Last Updated:** 2026-11-06  
 
-**Current focus:** Step: WS-07.2l (agreement acceptance, shadow wallet, launch-eligibility, migration 007) | State: awaiting-review | Updated: 2026-11-06
+**Current focus:** Step: WS-07.5a (shadow wallet pool, per-project binding, profile eligibility gate, migration 008) | State: awaiting-review | Updated: 2026-11-06
+
+**WS-07.5a done (tracker-verified by reading migration 008, upsertProfile CTE, projectService binding flow, and `docker compose exec -T api npm test` 9 suites 188/188; tsc only TS1295/TS1287; package.json unchanged; NOT run on real Postgres).** A founder holds a pool of staff-approved wallets (one pending at a time); each project binds one approved wallet via `shadowWalletId` (or `shadowWallet`; both => 400), each wallet to at most one project; rebinding a different wallet 409; bind audited as `shadow_wallet.bind`; `GET /founders/me` returns `{agreement, wallets:[...]}`; the wallet is never in public DTOs. Non-staff/admin callers need an approved application + accepted agreement. KNOWN INTERIM BREAK: the existing frontend create-project page saves the profile without a wallet reference, so that save fails (403/400) until WS-07.5l lands; the on-chain launch is unaffected. USER-ACTION after review/commit: `docker compose exec -T api npm run migrate` (expect 001-008), `docker compose exec -T api npm run migrate:status` (0 pending), `docker compose restart api`, GET /ready ok.
+
+## BLOCKED - create-project profile save (until WS-07.5l)
+Why: `POST /projects/profile` now requires `shadowWalletId` and launch-eligibility; the frontend does not send them yet.
+You need to do: nothing now; wait for WS-07.5l (frontend wallet pool, eligibility, create gating).
+How to confirm (no secrets in chat): after WS-07.5l, create a project and see the profile saved.
+Then run: /next-task WS-07.5l
 
 **WS-07.2l done (tracker-verified by reading migration 007, agreement.ts, founderRepository.ts, founderService.ts, founderRoutes.ts, app.ts mounts, and `docker compose exec -T api npm test` 9 suites 178/178; tsc only TS1295/TS1287; package.json and `POST /projects/profile` untouched; NOT run on real Postgres).** Endpoints: `GET /api/v1/agreement`; founder `POST /api/v1/founders/me/agreement` (wallet signature, 10 min window, 409 on replay), `POST .../me/shadow-wallet`, `GET .../me`, `GET .../me/launch-eligibility`; staff/admin `GET /api/v1/admin/shadow-wallets`, `POST .../:id/approve|reject` (pending-only, FOR UPDATE, own wallet 403, audit rows). Agreement text is a DRAFT placeholder. openapi.ts not updated. USER-ACTION after review/commit: `docker compose exec -T api npm run migrate` (expect 001-007), `npm run migrate:status` (0 pending), `docker compose restart api`, GET /ready ok. No UI yet.
 
@@ -136,6 +144,7 @@ Note: the list response is now `{ items, total, limit, offset }` (was a bare arr
 
 ## Change log
 
+2026-11-06  WS-07.5a  Shadow wallet pool, migration 008, per-project binding via `shadowWalletId` on `POST /projects/profile` with launch-eligibility enforced (API-WS07-h ticked, API-38 partial); new API-WS07-p..u  - verified by: read migration 008, upsertProfile CTE, projectService binding flow; npm test 188/188 in docker, tsc known TS1295/TS1287 only, package.json unchanged; not run on real Postgres
 2026-11-06  WS-07.2l  Agreement acceptance, shadow wallet request/approval, launch-eligibility, migration 007; API-WS07-d and API-34 ticked, API-33/38/39 partial; new API-WS07-i..o  - verified by: read migration/agreement/repository/service/routes, npm test 178/178 in docker, tsc known errors only; not run on real Postgres
 2026-11-06  WS-07.1l  Founder applications + staff review/KYC attestation, migration 006; API-WS07-a/b/c ticked; new API-WS07-e/f/g  - verified by: read migration/repository/service/routes/schemas, npm test 157/157 in container, tsc only TS1295/TS1287, package.json unchanged; Postgres runtime not verified
 2026-11-06  WS-07.1l  Selected (planning only): lean WS-07 plan, new backlog items API-WS07-a..d; no code changed  - verified by: n/a (docs only)

@@ -198,6 +198,7 @@ export const openApiDocument = {
           websiteUrl: { type: "string", format: "uri" },
           category: { type: "string", pattern: "^[a-z0-9][a-z0-9-]{0,31}$" },
           shadowWallet: { type: "string", pattern: "^0x[a-fA-F0-9]{40}$" },
+          shadowWalletId: { type: "string", format: "uuid" },
         },
       },
     },

@@ -55,7 +55,7 @@ export async function acceptAgreement(
   }
 }
 
-/** Declares a shadow wallet for staff review; one open (pending/approved) request per founder. */
+/** Declares a shadow wallet for staff review; one pending request at a time, any number approved. */
 export async function requestShadowWallet(
   user: AuthUser,
   rawAddress: string,
@@ -103,5 +103,5 @@ export async function launchEligibility(
   user: AuthUser
 ): Promise<{ eligible: boolean; checks: LaunchChecks }> {
   const checks = await readLaunchChecks(user.id, AGREEMENT_VERSION);
-  return { eligible: checks.applicationApproved && checks.agreementAccepted && checks.shadowWalletApproved, checks };
+  return { eligible: checks.applicationApproved && checks.agreementAccepted && checks.shadowWalletAvailable, checks };
 }

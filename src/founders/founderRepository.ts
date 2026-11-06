@@ -29,8 +29,24 @@ export interface WalletReviewOutcome {
 export interface LaunchChecks {
   applicationApproved: boolean;
   agreementAccepted: boolean;
-  shadowWalletApproved: boolean;
+  shadowWalletAvailable: boolean;
 }
+
+export interface OwnWalletRecord {
+  id: string;
+  address: string;
+  status: WalletStatus;
+  reviewNote: string | null;
+  projectId: string | null;
+}
+
+export interface ApprovedWallet {
+  id: string;
+  userId: string;
+  address: string;
+}
+
+export type WalletReference = { id: string } | { address: string };
 
 export interface NewAcceptance {
   userId: string;
@@ -62,6 +78,20 @@ interface WalletRow {
   created_at: Date;
 }
 
+interface OwnWalletRow {
+  id: string;
+  address: string;
+  status: WalletStatus;
+  review_note: string | null;
+  project_id: string | null;
+}
+
+interface ApprovedWalletRow {
+  id: string;
+  user_id: string;
+  address: string;
+}
+
 interface ReviewRow {
   id: string;
   user_id: string;
@@ -71,7 +101,7 @@ interface ReviewRow {
 interface ChecksRow {
   application_approved: boolean;
   agreement_accepted: boolean;
-  shadow_wallet_approved: boolean;
+  shadow_wallet_available: boolean;
 }
 
 const WALLET_SELECT = `SELECT w.id, w.user_id, u.wallet_address AS founder_wallet, w.address, w.status,
@@ -171,13 +201,39 @@ export async function insertShadowWallet(
   return toWallet(row);
 }
 
-export async function findLatestShadowWallet(userId: string): Promise<ShadowWalletRecord | null> {
-  const result = await pool.query<WalletRow>(
-    `${WALLET_SELECT} WHERE w.user_id = $1 ORDER BY w.created_at DESC, w.id LIMIT 1`,
+/** All wallets of a founder (newest first, bounded) with the project each one is bound to. */
+export async function listOwnWallets(userId: string): Promise<OwnWalletRecord[]> {
+  const result = await pool.query<OwnWalletRow>(
+    `SELECT w.id, w.address, w.status, w.review_note, s.project_id
+     FROM app.founder_wallets w
+     LEFT JOIN app.startup_profiles s ON s.founder_wallet_id = w.id
+     WHERE w.user_id = $1::uuid
+     ORDER BY w.created_at DESC, w.id LIMIT 50`,
     [userId]
   );
+  return result.rows.map((row) => ({
+    id: row.id,
+    address: row.address,
+    status: row.status,
+    reviewNote: row.review_note,
+    projectId: row.project_id,
+  }));
+}
+
+/** Resolves an APPROVED wallet by id or lowercase address (approved addresses are unique). */
+export async function findApprovedWallet(ref: WalletReference): Promise<ApprovedWallet | null> {
+  const result =
+    "id" in ref
+      ? await pool.query<ApprovedWalletRow>(
+          "SELECT id, user_id, address FROM app.founder_wallets WHERE id = $1::uuid AND status = 'approved'",
+          [ref.id]
+        )
+      : await pool.query<ApprovedWalletRow>(
+          "SELECT id, user_id, address FROM app.founder_wallets WHERE address = $1::text AND status = 'approved'",
+          [ref.address]
+        );
   const row = result.rows[0];
-  return row ? toWallet(row) : null;
+  return row ? { id: row.id, userId: row.user_id, address: row.address } : null;
 }
 
 export async function findShadowWalletById(id: string): Promise<ShadowWalletRecord | null> {
@@ -277,14 +333,17 @@ export async function readLaunchChecks(userId: string, version: string): Promise
          AS application_approved,
        EXISTS (SELECT 1 FROM app.agreement_acceptances WHERE user_id = $1::uuid AND agreement_version = $2::text)
          AS agreement_accepted,
-       EXISTS (SELECT 1 FROM app.founder_wallets WHERE user_id = $1::uuid AND status = 'approved')
-         AS shadow_wallet_approved`,
+       EXISTS (
+         SELECT 1 FROM app.founder_wallets w
+         WHERE w.user_id = $1::uuid AND w.status = 'approved'
+           AND NOT EXISTS (SELECT 1 FROM app.startup_profiles s WHERE s.founder_wallet_id = w.id)
+       ) AS shadow_wallet_available`,
     [userId, version]
   );
   const row = result.rows[0];
   return {
     applicationApproved: row?.application_approved ?? false,
     agreementAccepted: row?.agreement_accepted ?? false,
-    shadowWalletApproved: row?.shadow_wallet_approved ?? false,
+    shadowWalletAvailable: row?.shadow_wallet_available ?? false,
   };
 }

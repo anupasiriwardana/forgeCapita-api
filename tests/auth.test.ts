@@ -74,6 +74,15 @@ const mockQuery = jest.fn(async (sql: unknown, params?: unknown) => {
     const project = projects.get(p[0] as string);
     return project ? { rows: [{ id: p[0], developer: project.developer }], rowCount: 1 } : { rows: [], rowCount: 0 };
   }
+  if (text.startsWith("SELECT founder_wallet_id FROM app.startup_profiles")) {
+    return { rows: [{ founder_wallet_id: "bbbbbbbb-0000-4000-8000-000000000001" }], rowCount: 1 };
+  }
+  if (text.includes("AS application_approved")) {
+    return {
+      rows: [{ application_approved: true, agreement_accepted: true, shadow_wallet_available: false }],
+      rowCount: 1,
+    };
+  }
   if (text.includes("INSERT INTO app.startup_profiles")) {
     return { rows: [{ name: "n", description: "d", updated_at: new Date(0) }], rowCount: 1 };
   }

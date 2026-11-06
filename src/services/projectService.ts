@@ -1,12 +1,17 @@
 import {
+  findProfileWalletId,
   findProjectById,
   findProjects,
   upsertProfile as saveProfile,
+  type WalletBinding,
   type ProjectFilters,
   type ProjectSort,
   type SortOrder,
 } from "../repositories/projectRepository.js";
 import { AppError } from "../errors.js";
+import { AGREEMENT_VERSION } from "../founders/agreement.js";
+import { findApprovedWallet, readLaunchChecks } from "../founders/founderRepository.js";
+import type { WalletReference } from "../founders/founderRepository.js";
 import type {
   AuthUser,
   CreateProfileBody,
@@ -111,20 +116,94 @@ export async function getProjectById(id: string): Promise<ProjectDto | null> {
   return row ? toProjectDto(row) : null;
 }
 
+const PG_UNIQUE_VIOLATION = "23505";
+const PG_FK_VIOLATION = "23503";
+const WALLET_BINDING_INDEX = "startup_profiles_founder_wallet_uidx";
+
+function pgCode(err: unknown): string | undefined {
+  return typeof err === "object" && err !== null && "code" in err && typeof err.code === "string"
+    ? err.code
+    : undefined;
+}
+
+function pgConstraint(err: unknown): string | undefined {
+  return typeof err === "object" && err !== null && "constraint" in err && typeof err.constraint === "string"
+    ? err.constraint
+    : undefined;
+}
+
+function isStaff(user: AuthUser): boolean {
+  return user.role === "staff" || user.role === "admin";
+}
+
+function walletReferenceOf(body: CreateProfileBody): WalletReference | null {
+  if (body.shadowWalletId !== undefined) return { id: body.shadowWalletId };
+  if (body.shadowWallet !== undefined) return { address: body.shadowWallet.toLowerCase() };
+  return null;
+}
+
+/** One generic error for unknown, unapproved and foreign wallets so nothing leaks. */
+async function resolveWallet(ref: WalletReference, user: AuthUser): Promise<WalletBinding> {
+  const wallet = await findApprovedWallet(ref);
+  if (!wallet || (!isStaff(user) && wallet.userId !== user.id)) {
+    throw new AppError(400, "Shadow wallet not available");
+  }
+  return { walletId: wallet.id, address: wallet.address };
+}
+
+/** Application and agreement are always required; a free approved wallet only for a first binding. */
+async function assertFounderEligible(user: AuthUser, hasBinding: boolean): Promise<void> {
+  const checks = await readLaunchChecks(user.id, AGREEMENT_VERSION);
+  if (!checks.applicationApproved) throw new AppError(403, "Founder application is not approved");
+  if (!checks.agreementAccepted) throw new AppError(403, "Founder agreement is not accepted");
+  if (!hasBinding && !checks.shadowWalletAvailable) {
+    throw new AppError(403, "No approved shadow wallet is available");
+  }
+}
+
+/** Resolves the wallet to bind (or null to keep the current binding) and enforces the founder rules. */
+async function prepareBinding(body: CreateProfileBody, user: AuthUser): Promise<WalletBinding | null> {
+  const ref = walletReferenceOf(body);
+  if (isStaff(user)) return ref ? resolveWallet(ref, user) : null;
+
+  const currentWalletId = await findProfileWalletId(body.projectId);
+  await assertFounderEligible(user, currentWalletId !== null);
+  if (!ref) {
+    if (currentWalletId === null) throw new AppError(400, "shadowWalletId or shadowWallet is required");
+    return null;
+  }
+  const binding = await resolveWallet(ref, user);
+  if (currentWalletId !== null && currentWalletId !== binding.walletId) {
+    throw new AppError(409, "Project already has a shadow wallet");
+  }
+  return binding;
+}
+
 /**
- * Staff and admin may write any profile; anyone else must be the indexed project's
- * developer. shadowWallet is stored but never returned (TODO API-38).
+ * Staff and admin may write any profile and change its wallet binding; anyone else must be the
+ * indexed project's developer, eligible, and may bind one of their own approved wallets once.
+ * The wallet is never returned.
  */
 export async function upsertProfile(
   body: CreateProfileBody,
-  user: AuthUser
+  user: AuthUser,
+  ip: string | null = null
 ): Promise<ProfileDto> {
-  if (user.role !== "staff" && user.role !== "admin") {
+  if (!isStaff(user)) {
     const project = await findProjectById(body.projectId);
     if (!project) throw new AppError(404, "Project not found.");
     if (project.developer.toLowerCase() !== user.address.toLowerCase()) {
       throw new AppError(403, "Forbidden");
     }
   }
-  return toProfileDto(await saveProfile(body));
+  const binding = await prepareBinding(body, user);
+  try {
+    return toProfileDto(await saveProfile(body, binding, { userId: user.id, ip }));
+  } catch (err) {
+    if (pgCode(err) === PG_UNIQUE_VIOLATION && pgConstraint(err) === WALLET_BINDING_INDEX) {
+      throw new AppError(409, "Shadow wallet is already bound to a project");
+    }
+    if (pgCode(err) === PG_FK_VIOLATION) throw new AppError(400, "Shadow wallet not available");
+    throw err;
+  }
 }

@@ -120,27 +120,72 @@ function splitProjectId(projectId: string): { chainId: number; escrowAddress: st
   return { chainId: Number(chain), escrowAddress: escrow.toLowerCase() };
 }
 
-/** Upserts the profile; chain_id and escrow_address are derived from the id, never from the body. */
-export async function upsertProfile(body: CreateProfileBody): Promise<ProfileRow> {
+export interface WalletBinding {
+  walletId: string;
+  /** Lowercase address, stored in shadow_wallet so it never disagrees with the wallet row. */
+  address: string;
+}
+
+export interface ProfileActor {
+  userId: string;
+  ip: string | null;
+}
+
+/** Wallet currently bound to the profile, or null when the profile or its binding is absent. */
+export async function findProfileWalletId(projectId: string): Promise<string | null> {
+  const result = await pool.query<{ founder_wallet_id: string | null }>(
+    "SELECT founder_wallet_id FROM app.startup_profiles WHERE project_id = $1",
+    [projectId]
+  );
+  return result.rows[0]?.founder_wallet_id ?? null;
+}
+
+/**
+ * Upserts the profile; chain_id and escrow_address are derived from the id, never from the body.
+ * The wallet binding is written in the same statement (COALESCE keeps an existing binding when
+ * none is supplied) and a 'shadow_wallet.bind' audit row is added only when the binding changed.
+ */
+export async function upsertProfile(
+  body: CreateProfileBody,
+  binding: WalletBinding | null,
+  actor: ProfileActor
+): Promise<ProfileRow> {
   const { chainId, escrowAddress } = splitProjectId(body.projectId);
   const projectId = `${chainId}:${escrowAddress}`;
 
   const sql = `
-    INSERT INTO app.startup_profiles
-      (project_id, chain_id, escrow_address, name, description, logo_url, pitch_deck_url,
-       founder_bio, website_url, category, shadow_wallet)
-    VALUES
-      ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-    ON CONFLICT (project_id) DO UPDATE SET
-      name           = EXCLUDED.name,
-      description    = EXCLUDED.description,
-      logo_url       = EXCLUDED.logo_url,
-      pitch_deck_url = EXCLUDED.pitch_deck_url,
-      founder_bio    = EXCLUDED.founder_bio,
-      website_url    = EXCLUDED.website_url,
-      category       = EXCLUDED.category,
-      shadow_wallet  = EXCLUDED.shadow_wallet
-    RETURNING name, description, logo_url, pitch_deck_url, founder_bio, website_url, category, updated_at`;
+    WITH prev AS (
+      SELECT founder_wallet_id FROM app.startup_profiles WHERE project_id = $1::text
+    ),
+    saved AS (
+      INSERT INTO app.startup_profiles
+        (project_id, chain_id, escrow_address, name, description, logo_url, pitch_deck_url,
+         founder_bio, website_url, category, founder_wallet_id, shadow_wallet)
+      VALUES
+        ($1::text, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::uuid, $12::text)
+      ON CONFLICT (project_id) DO UPDATE SET
+        name              = EXCLUDED.name,
+        description       = EXCLUDED.description,
+        logo_url          = EXCLUDED.logo_url,
+        pitch_deck_url    = EXCLUDED.pitch_deck_url,
+        founder_bio       = EXCLUDED.founder_bio,
+        website_url       = EXCLUDED.website_url,
+        category          = EXCLUDED.category,
+        founder_wallet_id = COALESCE(EXCLUDED.founder_wallet_id, app.startup_profiles.founder_wallet_id),
+        shadow_wallet     = COALESCE(EXCLUDED.shadow_wallet, app.startup_profiles.shadow_wallet)
+      RETURNING name, description, logo_url, pitch_deck_url, founder_bio, website_url, category,
+        updated_at, founder_wallet_id
+    ),
+    audited AS (
+      INSERT INTO app.audit_log (action, actor_user_id, target, before_value, after_value, ip)
+      SELECT 'shadow_wallet.bind', $13::uuid, $12::text, NULL, 'bound', $14::text
+      FROM saved
+      WHERE $11::uuid IS NOT NULL
+        AND saved.founder_wallet_id IS DISTINCT FROM (SELECT founder_wallet_id FROM prev)
+      RETURNING id
+    )
+    SELECT name, description, logo_url, pitch_deck_url, founder_bio, website_url, category, updated_at
+    FROM saved`;
 
   const result = await pool.query<ProfileRow>(sql, [
     projectId,
@@ -153,9 +198,12 @@ export async function upsertProfile(body: CreateProfileBody): Promise<ProfileRow
     body.founderBio ?? null,
     body.websiteUrl ?? null,
     body.category ?? null,
-    body.shadowWallet ?? null,
+    binding?.walletId ?? null,
+    binding?.address ?? null,
+    actor.userId,
+    actor.ip,
   ]);
 
-  // RETURNING always yields the upserted row
+  // the upsert always yields the saved row
   return result.rows[0] as ProfileRow;
 }

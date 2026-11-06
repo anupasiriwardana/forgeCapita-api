@@ -175,10 +175,13 @@ describe("validation", () => {
   });
 
   it("accepts a valid body and chain-prefixed ids", async () => {
-    mockSession(mockQuery, "staff", STAFF, {
-      rows: [{ name: "n", description: "d", updated_at: new Date(0) }],
-      rowCount: 1,
-    });
+    mockSession(
+      mockQuery,
+      "staff",
+      STAFF,
+      { rows: [{ id: "bbbbbbbb-0000-4000-8000-000000000001", user_id: "u", address: "0x" + "a".repeat(40) }], rowCount: 1 },
+      { rows: [{ name: "n", description: "d", updated_at: new Date(0) }], rowCount: 1 }
+    );
     const res = await postProfile({
         ...validBody,
         projectId: "421614:0x" + "ab".repeat(20),

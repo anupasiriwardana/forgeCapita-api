@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { AGREEMENT_VERSION, agreementMessageTemplate, loadAgreement } from "../founders/agreement.js";
 import {
   findAcceptance,
-  findLatestShadowWallet,
+  listOwnWallets,
   findShadowWalletById,
   listShadowWallets,
 } from "../founders/founderRepository.js";
@@ -89,9 +89,9 @@ export async function postShadowWallet(req: Request, res: Response, next: NextFu
 export async function getMe(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     if (!req.user) throw new AppError(401, "Authentication required");
-    const [acceptance, wallet] = await Promise.all([
+    const [acceptance, wallets] = await Promise.all([
       findAcceptance(req.user.id, AGREEMENT_VERSION),
-      findLatestShadowWallet(req.user.id),
+      listOwnWallets(req.user.id),
     ]);
     res.status(200).json({
       success: true,
@@ -99,7 +99,13 @@ export async function getMe(req: Request, res: Response, next: NextFunction): Pr
         agreement: acceptance
           ? { version: acceptance.version, acceptedAt: acceptance.acceptedAt.toISOString() }
           : null,
-        shadowWallet: wallet ? toOwnerDto(wallet) : null,
+        wallets: wallets.map((w) => ({
+          id: w.id,
+          address: w.address,
+          status: w.status,
+          reviewNote: w.reviewNote,
+          projectId: w.projectId,
+        })),
       },
     } satisfies ApiResponse);
   } catch (err) {

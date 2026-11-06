@@ -103,6 +103,9 @@ describe("POST /api/projects/profile", () => {
 
   it("returns 201 with the public profile only and derives the key server-side", async () => {
     const dataCalls = mockSession(mockQuery, "staff", "0x" + "11".repeat(20), {
+      rows: [{ id: "bbbbbbbb-0000-4000-8000-000000000001", user_id: "u", address: validBody.shadowWallet }],
+      rowCount: 1,
+    }, {
       rows: [
         {
           name: validBody.name,
@@ -125,7 +128,7 @@ describe("POST /api/projects/profile", () => {
     expect(res.body.data.name).toBe(validBody.name);
     expect(res.body.data.logoUrl).toBe(validBody.logoUrl);
     expect(res.text).not.toMatch(/shadow|kyc|_/);
-    const params = dataCalls()[0]?.[1] as unknown[];
+    const params = dataCalls()[1]?.[1] as unknown[];
     expect(params.slice(0, 3)).toEqual([ID, 421614, ESCROW.toLowerCase()]);
     expect(params).toContain(validBody.shadowWallet);
   });
