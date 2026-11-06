@@ -54,6 +54,25 @@ export interface ProjectRow {
   profile_updated_at: Date | null;
 }
 
+// ─── Auth ────────────────────────────────────────────────────────────────────
+
+export type Role = "investor" | "founder" | "staff" | "admin";
+
+export interface AuthUser {
+  id: string;
+  /** Lowercase wallet address. */
+  address: string;
+  role: Role;
+}
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: AuthUser;
+    }
+  }
+}
+
 // ─── Request Body Shapes ─────────────────────────────────────────────────────
 
 export interface CreateProfileBody {

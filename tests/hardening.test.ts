@@ -7,6 +7,7 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import express from "express";
 import request from "supertest";
 import { Writable } from "node:stream";
+import { ALLOWED_ORIGIN, SESSION_COOKIE_HEADER, mockSession } from "./authHelpers.js";
 
 const mockQuery = jest.fn();
 
@@ -31,6 +32,14 @@ const validBody = {
   name: "Demo",
   description: "A demo startup.",
 };
+
+const STAFF = "0x" + "11".repeat(20);
+const postProfile = (body: object | string) =>
+  request(app)
+    .post("/api/projects/profile")
+    .set("Cookie", SESSION_COOKIE_HEADER)
+    .set("Origin", ALLOWED_ORIGIN)
+    .send(body);
 
 beforeEach(() => {
   mockQuery.mockReset();
@@ -68,7 +77,7 @@ describe("CORS", () => {
   it("allows an exact allow-listed origin", async () => {
     const res = await request(app).get("/health").set("Origin", "https://app.example.com");
     expect(res.headers["access-control-allow-origin"]).toBe("https://app.example.com");
-    expect(res.headers["access-control-allow-credentials"]).toBeUndefined();
+    expect(res.headers["access-control-allow-credentials"]).toBe("true");
   });
 
   it("denies unknown origins with 403 and no CORS headers", async () => {
@@ -97,46 +106,49 @@ describe("CORS", () => {
 
 describe("body handling", () => {
   it("rejects oversized bodies with 413 and a uniform body", async () => {
-    const res = await request(app)
-      .post("/api/projects/profile")
-      .send({ ...validBody, description: "x".repeat(150 * 1024) });
+    const dataCalls = mockSession(mockQuery, "staff", STAFF);
+    const res = await postProfile({ ...validBody, description: "x".repeat(150 * 1024) });
     expect(res.status).toBe(413);
     expect(res.body.success).toBe(false);
     expect(res.body.error).toBe("Payload too large");
     expect(res.text).not.toMatch(/stack| at /);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(dataCalls()).toHaveLength(0);
   });
 
   it("rejects malformed JSON with 400", async () => {
+    const dataCalls = mockSession(mockQuery, "staff", STAFF);
     const res = await request(app)
       .post("/api/projects/profile")
+      .set("Cookie", SESSION_COOKIE_HEADER)
+      .set("Origin", ALLOWED_ORIGIN)
       .set("Content-Type", "application/json")
       .send('{"projectId": ');
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("Invalid JSON body");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(dataCalls()).toHaveLength(0);
   });
 });
 
 describe("validation", () => {
   const rejects = async (body: object): Promise<void> => {
-    const res = await request(app).post("/api/projects/profile").send(body);
+    mockQuery.mockReset();
+    const dataCalls = mockSession(mockQuery, "staff", STAFF);
+    const res = await postProfile(body);
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
     expect(res.body.error).toBe("Validation failed");
     expect(Array.isArray(res.body.details)).toBe(true);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(dataCalls()).toHaveLength(0);
   };
 
   it("rejects missing fields", () => rejects({ projectId: "421614:0x" + "ab".repeat(20) }));
 
   it("rejects unknown keys without echoing them", async () => {
-    const res = await request(app)
-      .post("/api/projects/profile")
-      .send({ ...validBody, secretKeyName: "x" });
+    const dataCalls = mockSession(mockQuery, "staff", STAFF);
+    const res = await postProfile({ ...validBody, secretKeyName: "x" });
     expect(res.status).toBe(400);
     expect(res.text).not.toContain("secretKeyName");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(dataCalls()).toHaveLength(0);
   });
 
   it("rejects javascript: and data: URLs", async () => {
@@ -163,10 +175,11 @@ describe("validation", () => {
   });
 
   it("accepts a valid body and chain-prefixed ids", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ name: "n", description: "d", updated_at: new Date(0) }], rowCount: 1 });
-    const res = await request(app)
-      .post("/api/projects/profile")
-      .send({
+    mockSession(mockQuery, "staff", STAFF, {
+      rows: [{ name: "n", description: "d", updated_at: new Date(0) }],
+      rowCount: 1,
+    });
+    const res = await postProfile({
         ...validBody,
         projectId: "421614:0x" + "ab".repeat(20),
         shadowWallet: "0x" + "a".repeat(40),
@@ -193,8 +206,8 @@ describe("error handler", () => {
   it("does not leak SQL, stack or host on DB failure", async () => {
     const err = new Error("SELECT * FROM startup_profiles failed at pg host db.internal.example");
     err.stack = "Error: boom\n    at pg/lib/client.js:1:1";
-    mockQuery.mockRejectedValueOnce(err);
-    const res = await request(app).post("/api/projects/profile").send(validBody);
+    mockSession(mockQuery, "staff", STAFF, err);
+    const res = await postProfile(validBody);
     expect(res.status).toBe(500);
     expect(res.body.success).toBe(false);
     expect(res.body.error).toBe("Internal server error");

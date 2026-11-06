@@ -14,6 +14,8 @@ export const REDACT_PATHS: string[] = [
   "*.password",
   "*.token",
   "*.signature",
+  "*.nonce",
+  "*.cookie",
   "*.secret",
   "*.privateKey",
   "*.DATABASE_URL",

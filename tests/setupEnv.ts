@@ -7,3 +7,6 @@ process.env["LOG_LEVEL"] = "silent";
 // High limits so unrelated tests never trip the limiters; rate-limit tests override these.
 process.env["RATE_LIMIT_MAX"] = "100000";
 process.env["PROFILE_RATE_LIMIT_MAX"] = "100000";
+process.env["AUTH_RATE_LIMIT_MAX"] = "100000";
+// Address of the well-known test key 0x00..01 (tests/auth.test.ts signs with it).
+process.env["ADMIN_WALLETS"] = "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf";

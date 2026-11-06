@@ -21,8 +21,8 @@ const app = createApp();
 describe("app rate limits", () => {
   it("applies the stricter limit to POST /api/projects/profile", async () => {
     const send = () => request(app).post("/api/projects/profile").send({});
-    expect((await send()).status).toBe(400);
-    expect((await send()).status).toBe(400);
+    expect((await send()).status).toBe(401);
+    expect((await send()).status).toBe(401);
     const limited = await send();
     expect(limited.status).toBe(429);
     expect(limited.body).toEqual({ success: false, error: "Too many requests." });

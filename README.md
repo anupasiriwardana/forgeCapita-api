@@ -38,7 +38,27 @@ Response: `{ "success": true, "data": { "items": [...], "total": N, "limit": N, 
 
 Every on-chain `bigint` value (`fundingGoal`, `totalRaised`, `fundingDeadline`, `totalStaked`, `createdAt`, ...) is a decimal string, or `null` when unset; never parse it as a JS number. `chainId` and the milestone indexes are plain numbers. Each item has `profile: null` when no profile exists, otherwise only the public fields `name`, `description`, `logoUrl`, `pitchDeckUrl`, `founderBio`, `websiteUrl`, `category`, `updatedAt`. `shadow_wallet` and `kyc_verified` are never returned.
 
-`POST /api/projects/profile` upserts a profile for a composite `projectId` (optional `category`). It is currently unauthenticated (TODO API-20, WS-06) and rate limited.
+`POST /api/projects/profile` upserts a profile for a composite `projectId` (optional `category`). It requires a signed-in session (see Authentication), is rate limited, and only the indexed project's developer (or a `staff`/`admin` user) may write it.
+
+## Authentication
+
+Wallet sign-in (EIP-4361-style, no chain id) creates an opaque server-side session in an httpOnly `fc_session` cookie. There is no session secret: tokens are 32 random bytes and only their sha256 is stored in `app.sessions`. Run `npm run migrate` to create `app.users`, `app.auth_nonces` and `app.sessions` (migration 004).
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/auth/nonce` `{address}` | Returns `{nonce, message, expiresAt}` (valid 5 min); sign `message` with `personal_sign` |
+| `POST /api/v1/auth/verify` `{address, signature}` | Single-use nonce; sets the cookie, returns `{user:{id,address,role}}`; any failure is a generic `401 Sign-in failed` |
+| `GET /api/v1/auth/me` | Current user or `401` |
+| `POST /api/v1/auth/logout` | Deletes the session, clears the cookie, `204` |
+
+Responses use the usual `{success, data}` envelope. Sessions last 30 days (absolute), expire after 7 idle days, and each user keeps at most 5. Roles are `investor` (default), `founder`, `staff`, `admin`; wallets in `ADMIN_WALLETS` become `admin` on every login. Browser clients must send `credentials: "include"`; any non-GET request carrying the cookie must come from an origin in `CORS_ORIGINS`, else `403`.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `ADMIN_WALLETS` | none | Comma-separated admin wallets |
+| `AUTH_DOMAIN` | host of first `CORS_ORIGINS` | Domain in the sign-in message |
+| `SESSION_COOKIE_SAMESITE` | `lax` | `lax` or `none` (`none` forces `Secure`) |
+| `AUTH_RATE_LIMIT_MAX` | `10` | Per-window limit shared by `/auth/nonce` and `/auth/verify` |
 
 ## Probes, versioning and OpenAPI
 

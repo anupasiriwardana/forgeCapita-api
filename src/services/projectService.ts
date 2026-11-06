@@ -6,7 +6,9 @@ import {
   type ProjectSort,
   type SortOrder,
 } from "../repositories/projectRepository.js";
+import { AppError } from "../errors.js";
 import type {
+  AuthUser,
   CreateProfileBody,
   ProfileDto,
   ProfileRow,
@@ -110,10 +112,19 @@ export async function getProjectById(id: string): Promise<ProjectDto | null> {
 }
 
 /**
- * TODO(API-20, WS-06): unauthenticated. Anyone can write any profile until
- * wallet-signature auth and owner checks land. shadowWallet is stored but never
- * returned (TODO API-38).
+ * Staff and admin may write any profile; anyone else must be the indexed project's
+ * developer. shadowWallet is stored but never returned (TODO API-38).
  */
-export async function upsertProfile(body: CreateProfileBody): Promise<ProfileDto> {
+export async function upsertProfile(
+  body: CreateProfileBody,
+  user: AuthUser
+): Promise<ProfileDto> {
+  if (user.role !== "staff" && user.role !== "admin") {
+    const project = await findProjectById(body.projectId);
+    if (!project) throw new AppError(404, "Project not found.");
+    if (project.developer.toLowerCase() !== user.address.toLowerCase()) {
+      throw new AppError(403, "Forbidden");
+    }
+  }
   return toProfileDto(await saveProfile(body));
 }

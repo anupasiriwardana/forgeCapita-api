@@ -76,18 +76,30 @@ Item IDs (`API-xx`) are referenced from `ROADMAP.md`. Plan revised 2026-10-28.
 
 ## Phase 2: Accounts, sessions & roles
 
-- [ ] **API-11** Tables: `users` (email unique, `password_hash`, `role`, `email_verified_at`, `totp_secret_enc`, `failed_logins`, `locked_until`), `sessions`, `email_tokens` (verify / reset, hashed, expiring, single use).
+- [~] **API-11** Tables: `users` (email unique, `password_hash`, `role`, `email_verified_at`, `totp_secret_enc`, `failed_logins`, `locked_until`), `sessions`, `email_tokens` (verify / reset, hashed, expiring, single use).
+  - Partial 2026-11-06 (WS-06.2w, wallet-first deviation): `app.users` (wallet_address, role, last_login_at), `app.sessions` (sha256 token hash only), `app.auth_nonces` in migration 004. NO email/password columns, no `email_tokens`; deferred with API-12.
 - [ ] **API-12** Sign-up (investor or founder), email verification, login, logout, logout-all, change password, password reset. argon2id hashing, constant-time compare, generic error messages, lockout with backoff, breach-safe password rules.
-- [ ] **API-13** Server-side sessions: random opaque ID, httpOnly + Secure + SameSite=Lax cookie, rotation on login and privilege change, idle + absolute timeout, CSRF token (double submit or synchronizer) on state-changing routes.
+- [~] **API-13** Server-side sessions: random opaque ID, httpOnly + Secure + SameSite=Lax cookie, rotation on login and privilege change, idle + absolute timeout, CSRF token (double submit or synchronizer) on state-changing routes.
+  - Partial 2026-11-06 (lean): opaque 32-byte token, httpOnly cookie `fc_session` (Secure in production or SameSite=None), SameSite=Lax by default, 30-day absolute and 7-day idle timeout, max 5 sessions per user, CSRF via SameSite + `requireSameOrigin` (no CSRF token, user-approved lean). Rotation on privilege change not done.
 - [ ] **API-14** TOTP 2FA enrolment and verification with recovery codes; **mandatory for `staff` and `admin`** (login blocked until enrolled).
-- [ ] **API-15** Wallet linking: server issues a nonce + message (domain, chain, nonce, expiry), user signs in MetaMask, API verifies the signature and stores `wallet_address` (checksummed, unique, one per account). Re-link requires password + staff/admin approval for founders with live projects. Smart-contract wallets via ERC-1271 `[DEFERRED]`.
+- [~] **API-15** Wallet linking: server issues a nonce + message (domain, chain, nonce, expiry), user signs in MetaMask, API verifies the signature and stores `wallet_address` (checksummed, unique, one per account). Re-link requires password + staff/admin approval for founders with live projects. Smart-contract wallets via ERC-1271 `[DEFERRED]`.
+  - Partial 2026-11-06 (lean): `POST /api/v1/auth/nonce` + `/verify` sign-in with SIWE-style message (domain, nonce, expiry), single-use nonce, address becomes the account (no separate linking, no re-link flow, no ERC-1271).
 - [ ] **API-16** `[USER-ACTION]` Choose and configure an email provider (Resend, Postmark or SES), verify the sending domain, provide `EMAIL_API_KEY`, `EMAIL_FROM`, `APP_BASE_URL`, `SESSION_SECRET` in `.env`. Dev fallback: log emails to console in non-production only.
-- [ ] **API-17** `[USER-ACTION]` Admin bootstrap: run a one-time seed script with `ADMIN_EMAIL`; admin sets the password through the reset link and enrols TOTP; link the treasury wallet (must equal the on-chain treasury). The script refuses to run if an admin already exists.
+- [~] **API-17** `[USER-ACTION]` Admin bootstrap: run a one-time seed script with `ADMIN_EMAIL`; admin sets the password through the reset link and enrols TOTP; link the treasury wallet (must equal the on-chain treasury). The script refuses to run if an admin already exists.
+  - Reinterpreted 2026-11-06: admin bootstrap via `ADMIN_WALLETS` env (public addresses, comma list) promotes to admin on sign-in. No seed script, no TOTP, treasury-wallet equality check not done.
 - [ ] **API-18** Staff management (admin only): invite staff by email, assign / revoke role, force 2FA enrolment, deactivate; all changes audit-logged.
-- [ ] **API-19** `requireAuth`, `requireRole(...)`, `requireOwnership(resource)` middleware. Ownership is derived from the session user, never from client-supplied wallet or user IDs.
-- [ ] **API-20** Apply RBAC to every existing and new route per the matrix above; fix `POST /api/projects/profile` so a founder can only modify their own application / project.
+- [~] **API-19** `requireAuth`, `requireRole(...)`, `requireOwnership(resource)` middleware. Ownership is derived from the session user, never from client-supplied wallet or user IDs.
+  - Partial 2026-11-06: `requireAuth`, `requireRole` (exists, NOT yet used on any route) in `src/auth/middleware.ts`; ownership check lives in `projectService.upsertProfile`, no generic `requireOwnership`.
+- [~] **API-20** Apply RBAC to every existing and new route per the matrix above; fix `POST /api/projects/profile` so a founder can only modify their own application / project.
+  - Partial 2026-11-06: `POST /profile` gated (limiter -> requireSameOrigin -> requireAuth -> ownership: staff/admin any; others 404 if project not indexed, 403 if not developer). Other routes and the RBAC matrix pending.
 - [ ] **API-21** Append-only `audit_log` (actor, role, action, target, before/after summary, IP, user agent, time) written for every privileged action; admin read endpoint with filters.
 - [ ] **API-22** In-app notifications table + email templates (application changes requested, approved / rejected, KYC result, compliance warning, complaint updates); notification preferences.
+- [ ] **API-WS06-a** `loadSession` DB error returns 500 even on public GETs; degrade to anonymous (or fail only on authed routes).
+- [ ] **API-WS06-b** No periodic cleanup of expired sessions/nonces (nonces are purged only on issue, sessions on use or per-user prune).
+- [ ] **API-WS06-c** Staff/admin `POST /profile` skips the project-indexed check (can write a profile for a non-existent project).
+- [ ] **API-WS06-d** Document auth response shapes: success envelope is `{success, data:{...}}` (openapi/README/postman).
+- [ ] **API-WS06-e** Deviations recorded: wallet sign-in replaces email/password; staff/admin 2FA dropped for now; API-12, 14, 16, 18, 22 deferred.
+- [ ] **API-WS06-f** `[USER-ACTION]` After review/commit: `docker compose exec -T api npm run migrate` then `npm run migrate:status` (expect 001-004 applied, 0 pending). Optional: set `ADMIN_WALLETS=<public MetaMask address>` in the api environment file then `docker compose restart api`. Production: `SESSION_COOKIE_SAMESITE=none` if frontend/API are on different registrable domains, `TRUST_PROXY=1`, `CORS_ORIGINS`, `AUTH_DOMAIN`. Frontend must send `credentials:'include'` (WS-06.3w).
 
 ## Phase 3: Founder application, manual KYC, agreement & repo
 

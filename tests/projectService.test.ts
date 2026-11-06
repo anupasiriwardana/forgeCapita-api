@@ -115,7 +115,10 @@ describe("projectRepository SQL", () => {
       rows: [{ name: "n", description: "d", updated_at: new Date(0) }],
       rowCount: 1,
     });
-    await upsertProfile({ projectId: ID, name: "n", description: "d", category: "ai" });
+    await upsertProfile(
+      { projectId: ID, name: "n", description: "d", category: "ai" },
+      { id: "u", address: "0x" + "11".repeat(20), role: "staff" }
+    );
     expect(sqlOf(0)).toContain("INSERT INTO app.startup_profiles");
     expect(sqlOf(0)).toContain("category       = EXCLUDED.category");
     expect(sqlOf(0)).not.toContain("RETURNING *");

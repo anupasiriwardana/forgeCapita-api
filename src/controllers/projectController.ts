@@ -4,6 +4,7 @@ import {
   getProjectById,
   listProjects,
 } from "../services/projectService.js";
+import { AppError } from "../errors.js";
 import type { ValidatedRequest } from "../middlewares/validate.js";
 import type {
   ListProjectsQuery,
@@ -19,12 +20,13 @@ function validatedOf(res: Response): ValidatedRequest {
 // ─── POST /api/projects/profile ──────────────────────────────────────────────
 
 export async function createOrUpdateProfile(
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> {
   try {
-    const saved = await upsertProfile(validatedOf(res).body as ProfileBody);
+    if (!req.user) throw new AppError(401, "Authentication required");
+    const saved = await upsertProfile(validatedOf(res).body as ProfileBody, req.user);
 
     res.status(201).json({
       success: true,

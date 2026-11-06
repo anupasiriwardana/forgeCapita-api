@@ -109,7 +109,7 @@ export const openApiDocument = {
     },
     "/api/v1/projects/profile": {
       post: {
-        summary: "Create or update a project profile (unauthenticated until API-20)",
+        summary: "Create or update a project profile (session cookie required; developer, staff or admin)",
         requestBody: {
           required: true,
           content: {
@@ -126,6 +126,9 @@ export const openApiDocument = {
             },
           },
           "400": errorResponse("Validation failed"),
+          "401": errorResponse("Authentication required"),
+          "403": errorResponse("Not the project developer"),
+          "404": errorResponse("Project not indexed"),
           "429": errorResponse("Too many requests"),
         },
       },

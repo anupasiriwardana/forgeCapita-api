@@ -12,6 +12,8 @@ import { requestId } from "./middlewares/requestId.js";
 import { readiness } from "./controllers/healthController.js";
 import { openApiDocument } from "./openapi.js";
 import healthRoutes from "./routes/healthRoutes.js";
+import { loadSession } from "./auth/middleware.js";
+import { createAuthRoutes } from "./routes/authRoutes.js";
 import { createProjectRoutes } from "./routes/projectRoutes.js";
 
 const allowedOrigins: ReadonlySet<string> = new Set(config.CORS_ORIGINS);
@@ -64,8 +66,9 @@ export function createApp(): Express {
     })
   );
 
-  // Exact-match allow-list. Credentials stay disabled until cookie/session auth
-  // exists (API-13); requests without an Origin (curl, server-to-server) pass.
+  // Exact-match allow-list. Credentials are enabled for the session cookie, which is safe
+  // only because origins are never wildcarded; requests without an Origin (curl,
+  // server-to-server) pass. State-changing cookie requests are also checked by requireSameOrigin.
   app.use(
     cors({
       origin: (origin, callback) => {
@@ -73,6 +76,7 @@ export function createApp(): Express {
         if (allowedOrigins.has(origin)) return callback(null, true);
         return callback(new CorsOriginError());
       },
+      credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id"],
       exposedHeaders: ["X-Request-Id", "RateLimit-Policy", "RateLimit"],
@@ -90,6 +94,8 @@ export function createApp(): Express {
 
   app.use(express.json({ limit: config.BODY_LIMIT, strict: true }));
 
+  app.use(loadSession);
+
   app.use("/health", healthRoutes);
   app.get("/ready", readiness);
 
@@ -98,6 +104,13 @@ export function createApp(): Express {
       res.json(openApiDocument);
     });
   }
+
+  // ONE limiter instance for /auth/nonce and /auth/verify.
+  const authLimiter = createLimiter({
+    windowMs: config.RATE_LIMIT_WINDOW_MS,
+    max: config.AUTH_RATE_LIMIT_MAX,
+  });
+  app.use("/api/v1/auth", createAuthRoutes(authLimiter));
 
   // /api/projects is a deprecated alias of /api/v1/projects. Both mounts share ONE profile limiter
   // instance, so the write limit cannot be doubled by alternating between the two paths.

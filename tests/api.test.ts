@@ -12,6 +12,7 @@
 
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import request from "supertest";
+import { ALLOWED_ORIGIN, SESSION_COOKIE_HEADER, mockSession } from "./authHelpers.js";
 
 // ─── Mock pg BEFORE importing anything that resolves it ──────────────────────
 
@@ -93,8 +94,15 @@ describe("POST /api/projects/profile", () => {
     shadowWallet: "0x" + "c".repeat(40),
   };
 
+  const asStaff = (body: object) =>
+    request(app)
+      .post("/api/projects/profile")
+      .set("Cookie", SESSION_COOKIE_HEADER)
+      .set("Origin", ALLOWED_ORIGIN)
+      .send(body);
+
   it("returns 201 with the public profile only and derives the key server-side", async () => {
-    mockQuery.mockResolvedValueOnce({
+    const dataCalls = mockSession(mockQuery, "staff", "0x" + "11".repeat(20), {
       rows: [
         {
           name: validBody.name,
@@ -110,42 +118,40 @@ describe("POST /api/projects/profile", () => {
       rowCount: 1,
     });
 
-    const res = await request(app).post("/api/projects/profile").send(validBody);
+    const res = await asStaff(validBody);
 
     expect(res.status).toBe(201);
     expect(res.body.message).toBe("Profile saved");
     expect(res.body.data.name).toBe(validBody.name);
     expect(res.body.data.logoUrl).toBe(validBody.logoUrl);
     expect(res.text).not.toMatch(/shadow|kyc|_/);
-    const params = mockQuery.mock.calls[0]?.[1] as unknown[];
+    const params = dataCalls()[0]?.[1] as unknown[];
     expect(params.slice(0, 3)).toEqual([ID, 421614, ESCROW.toLowerCase()]);
     expect(params).toContain(validBody.shadowWallet);
   });
 
   it("rejects a non-composite projectId and an unsupported chain", async () => {
+    const dataCalls = mockSession(mockQuery, "staff", "0x" + "11".repeat(20));
     for (const projectId of ["0xabc123", ESCROW, `1:${ESCROW}`]) {
-      const res = await request(app)
-        .post("/api/projects/profile")
-        .send({ ...validBody, projectId });
+      const res = await asStaff({ ...validBody, projectId });
       expect(res.status).toBe(400);
     }
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(dataCalls()).toHaveLength(0);
   });
 
   it("returns 400 when required fields are missing", async () => {
-    const res = await request(app)
-      .post("/api/projects/profile")
-      .send({ projectId: ID });
+    const dataCalls = mockSession(mockQuery, "staff", "0x" + "11".repeat(20));
+    const res = await asStaff({ projectId: ID });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("Validation failed");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(dataCalls()).toHaveLength(0);
   });
 
   it("returns 500 when the DB throws during upsert", async () => {
-    mockQuery.mockRejectedValueOnce(new Error("unique constraint violation"));
+    mockSession(mockQuery, "staff", "0x" + "11".repeat(20), new Error("unique constraint violation"));
 
-    const res = await request(app).post("/api/projects/profile").send(validBody);
+    const res = await asStaff(validBody);
 
     expect(res.status).toBe(500);
     expect(res.body.success).toBe(false);

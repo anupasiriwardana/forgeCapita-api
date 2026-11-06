@@ -4,6 +4,7 @@ import {
   getProject,
   getProjects,
 } from "../controllers/projectController.js";
+import { requireAuth, requireSameOrigin } from "../auth/middleware.js";
 import { validate } from "../middlewares/validate.js";
 import {
   listProjectsQuerySchema,
@@ -18,11 +19,13 @@ export function createProjectRoutes(profileLimiter: RequestHandler): Router {
   /**
    * POST /api/projects/profile
    * Must be declared BEFORE the /:projectId wildcard to avoid route shadowing.
-   * TODO(API-20, WS-06): unauthenticated; anyone can write a profile until wallet auth lands.
+   * Requires a session; the service enforces developer ownership (or staff/admin).
    */
   router.post(
     "/profile",
     profileLimiter,
+    requireSameOrigin,
+    requireAuth,
     validate({ body: profileBodySchema }),
     createOrUpdateProfile
   );

@@ -4,9 +4,9 @@
 **Runtime:** Node.js 22 / Express.js / TypeScript  
 **Database:** Neon PostgreSQL (Shared with Ponder Indexer)  
 **Port:** 3001  
-**Last Updated:** 2026-11-05  
+**Last Updated:** 2026-11-06  
 
-**Current focus:** Step: WS-01.4 (API-09 /ready, API-10 /api/v1 + openapi.json; lean) | State: awaiting-review | Updated: 2026-11-05  
+**Current focus:** Step: WS-06.2w (wallet sign-in, sessions, gated POST /profile) | State: awaiting-review | Updated: 2026-11-06
 
 **User steps after review:** commit; the API reloads via tsx watch (or `docker compose restart api`); then `Invoke-RestMethod http://localhost:3001/ready` (expect success true), `Invoke-RestMethod "http://localhost:3001/api/v1/projects?limit=2"`, `Invoke-RestMethod "http://localhost:3001/api/projects?limit=2"`, `Invoke-RestMethod http://localhost:3001/api/v1/openapi.json`.
 
