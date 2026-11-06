@@ -71,6 +71,21 @@ Run `npm run migrate` for migration 005 (`app.audit_log`, append-only: triggers 
 
 `admin` is never assignable through the API (grant it via `ADMIN_WALLETS`). Admins, `ADMIN_WALLETS` wallets, unknown users and self-changes are rejected (`403`/`404`). A role change updates the user, writes one audit row (actor, target, before/after, IP) and deletes the target's sessions in a single SQL statement, so the new role applies on their next sign-in. Each successful login also deletes expired and idle sessions.
 
+## Founder applications
+
+Run `npm run migrate` for migration 006 (`app.founder_applications`; one open `pending`/`approved` application per wallet, a rejected founder may reapply). Responses are `Cache-Control: no-store`.
+
+| Endpoint | Access | Purpose |
+|---|---|---|
+| `POST /api/v1/applications` `{projectName,summary,websiteUrl,pitchDeckUrl,repoUrl?,contact?}` | `investor`, `founder` | Submit (`201`; `409` if an open application exists). URLs must be https; `repoUrl` must be github.com or gitlab.com |
+| `GET /api/v1/applications/mine` | signed in | Caller's latest application or `null` |
+| `GET /api/v1/admin/applications?status&limit&offset` | `admin`, `staff` | Paged list; `{items,total,limit,offset}` |
+| `GET /api/v1/admin/applications/:id` | `admin`, `staff` | One application (includes reviewer ids) |
+| `POST /api/v1/admin/applications/:id/approve` `{kycVerified:true,note?}` | `admin`, `staff` | Pending only; stamps KYC, grants `founder` to a current `investor` (never downgrades staff/admin) and revokes their sessions |
+| `POST /api/v1/admin/applications/:id/reject` `{note}` | `admin`, `staff` | Pending only; note required |
+
+Approve/reject each run as one SQL statement (transition, role grant, session revocation and `application.approve` / `application.reject` / `role.change` audit rows). `404` unknown id, `409` not pending, `403` reviewing one's own application. `contact` is visible only to the applicant and staff/admin.
+
 ## Probes, versioning and OpenAPI
 
 - `GET /health` is liveness; `GET /ready` returns `200` when the DB is reachable and every migration is applied, else `503 {"success":false,"error":"Not ready"}`. Both are exempt from rate limiting and request logs. Indexer reachability is deferred (the API has no indexer URL; both share the same Neon DB).

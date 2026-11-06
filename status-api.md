@@ -6,7 +6,9 @@
 **Port:** 3001  
 **Last Updated:** 2026-11-06  
 
-**Current focus:** Step: WS-06.7w (admin role assignment, append-only audit_log migration 005, GET admin users, API-WS06-a/b) | State: awaiting-review | Updated: 2026-11-06
+**Current focus:** Step: WS-07.1l (founder applications + staff review, migration 006) | State: awaiting-review | Updated: 2026-11-06
+
+**WS-07.1l done (tracker-verified by reading migration 006, repository CTEs, service, routes, schemas, and `docker compose exec -T api npm test` 8 suites 157/157; tsc only TS1295/TS1287; NOT run on real Postgres).** `POST /api/v1/applications`, `GET /api/v1/applications/mine`, staff/admin `GET /api/v1/admin/applications[/:id]`, `POST .../:id/approve` (needs `kycVerified: true`) and `/reject` (needs note). Single-statement CTEs, pending-only; approve grants `founder` only from `investor`, revokes sessions only when the role changed, audit rows application.approve/application.reject/role.change. Own application: 403 before 409. USER-ACTION after review/commit: `docker compose exec -T api npm run migrate` (expect 001-006), `npm run migrate:status` (0 pending), `docker compose restart api`, GET /ready ok. No UI yet.
 
 **WS-06.7w done (tracker-verified by reading code and `docker compose exec -T api npm test` 145/145; tsc only TS1295/TS1287; NOT run on real Postgres).** Admin routes `PATCH /api/v1/admin/users/:address/role` (admin only) and `GET /api/v1/admin/users` (admin, staff); `admin` never assignable; audit rows in append-only `app.audit_log`; target sessions revoked on role change; loadSession degrades to anonymous; expired sessions cleaned on login. USER-ACTION after review/commit: `docker compose exec -T api npm run migrate` (expect 001-005), `npm run migrate:status` (0 pending), `docker compose restart api`, GET /ready ok. The role route is only reachable from a frontend with an admin session (no UI yet), so confirm via migrate status and /ready.
 
@@ -131,6 +133,10 @@ The backlog was rewritten to a production-grade plan. Key changes from what this
 Note: the list response is now `{ items, total, limit, offset }` (was a bare array); the Postman collection in `postman/` still reflects the old shapes (update later).
 
 ## Change log
+
+2026-11-06  WS-07.1l  Founder applications + staff review/KYC attestation, migration 006; API-WS07-a/b/c ticked; new API-WS07-e/f/g  - verified by: read migration/repository/service/routes/schemas, npm test 157/157 in container, tsc only TS1295/TS1287, package.json unchanged; Postgres runtime not verified
+2026-11-06  WS-07.1l  Selected (planning only): lean WS-07 plan, new backlog items API-WS07-a..d; no code changed  - verified by: n/a (docs only)
+2026-11-06  WS-06.7w  User reports migration 005 applied and step reviewed/committed  - verified by: user-reported, not verified
 
 2026-11-06  WS-06.7w  Admin role assignment + GET users, migration 005 audit_log (append-only), session revocation, API-WS06-a/b done; API-21 partial  - verified by: read migration/repo/service/routes/middleware, npm test 145/145 in container, tsc filtered; Postgres runtime not verified
 

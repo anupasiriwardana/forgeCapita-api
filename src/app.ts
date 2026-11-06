@@ -14,6 +14,7 @@ import { openApiDocument } from "./openapi.js";
 import healthRoutes from "./routes/healthRoutes.js";
 import { loadSession } from "./auth/middleware.js";
 import { createAdminRoutes } from "./routes/adminRoutes.js";
+import { createAdminApplicationRoutes, createApplicationRoutes } from "./routes/applicationRoutes.js";
 import { createAuthRoutes } from "./routes/authRoutes.js";
 import { createProjectRoutes } from "./routes/projectRoutes.js";
 
@@ -118,6 +119,17 @@ export function createApp(): Express {
     windowMs: config.RATE_LIMIT_WINDOW_MS,
     max: config.PROFILE_RATE_LIMIT_MAX,
   });
+  // Application routes mount before /admin so the longer path wins; each write route group has ONE limiter.
+  const applicationLimiter = createLimiter({
+    windowMs: config.RATE_LIMIT_WINDOW_MS,
+    max: config.PROFILE_RATE_LIMIT_MAX,
+  });
+  const reviewLimiter = createLimiter({
+    windowMs: config.RATE_LIMIT_WINDOW_MS,
+    max: config.PROFILE_RATE_LIMIT_MAX,
+  });
+  app.use("/api/v1/applications", createApplicationRoutes(applicationLimiter));
+  app.use("/api/v1/admin/applications", createAdminApplicationRoutes(reviewLimiter));
   app.use("/api/v1/admin", createAdminRoutes(adminLimiter));
 
   // /api/projects is a deprecated alias of /api/v1/projects. Both mounts share ONE profile limiter
