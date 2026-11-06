@@ -88,18 +88,22 @@ Item IDs (`API-xx`) are referenced from `ROADMAP.md`. Plan revised 2026-10-28.
 - [~] **API-17** `[USER-ACTION]` Admin bootstrap: run a one-time seed script with `ADMIN_EMAIL`; admin sets the password through the reset link and enrols TOTP; link the treasury wallet (must equal the on-chain treasury). The script refuses to run if an admin already exists.
   - Reinterpreted 2026-11-06: admin bootstrap via `ADMIN_WALLETS` env (public addresses, comma list) promotes to admin on sign-in. No seed script, no TOTP, treasury-wallet equality check not done.
 - [ ] **API-18** Staff management (admin only): invite staff by email, assign / revoke role, force 2FA enrolment, deactivate; all changes audit-logged.
+  - Partial 2026-11-06 (WS-06.7w): `PATCH /api/v1/admin/users/:address/role` and `GET /api/v1/admin/users` (role assignment, audited, sessions revoked). No invites, 2FA or deactivation.
 - [~] **API-19** `requireAuth`, `requireRole(...)`, `requireOwnership(resource)` middleware. Ownership is derived from the session user, never from client-supplied wallet or user IDs.
-  - Partial 2026-11-06: `requireAuth`, `requireRole` (exists, NOT yet used on any route) in `src/auth/middleware.ts`; ownership check lives in `projectService.upsertProfile`, no generic `requireOwnership`.
+  - Partial 2026-11-06: `requireAuth`, `requireRole` (now used on the admin routes, WS-06.7w) in `src/auth/middleware.ts`; ownership check lives in `projectService.upsertProfile`, no generic `requireOwnership`.
 - [~] **API-20** Apply RBAC to every existing and new route per the matrix above; fix `POST /api/projects/profile` so a founder can only modify their own application / project.
   - Partial 2026-11-06: `POST /profile` gated (limiter -> requireSameOrigin -> requireAuth -> ownership: staff/admin any; others 404 if project not indexed, 403 if not developer). Other routes and the RBAC matrix pending.
 - [ ] **API-21** Append-only `audit_log` (actor, role, action, target, before/after summary, IP, user agent, time) written for every privileged action; admin read endpoint with filters.
+  - Partial 2026-11-06 (WS-06.7w): migration 005 `app.audit_log` with append-only triggers; role changes audited (`role.change`); no user agent column; audit read route NOT built (`listAuditEntries` unused); other privileged actions not yet audited.
 - [ ] **API-22** In-app notifications table + email templates (application changes requested, approved / rejected, KYC result, compliance warning, complaint updates); notification preferences.
-- [ ] **API-WS06-a** `loadSession` DB error returns 500 even on public GETs; degrade to anonymous (or fail only on authed routes).
-- [ ] **API-WS06-b** No periodic cleanup of expired sessions/nonces (nonces are purged only on issue, sessions on use or per-user prune).
+- [x] **API-WS06-a** `loadSession` DB error returns 500 even on public GETs; degrade to anonymous (or fail only on authed routes).
+- [x] **API-WS06-b** No periodic cleanup of expired sessions/nonces (nonces are purged only on issue, sessions on use or per-user prune).
+- [ ] **API-WS06-g** Audit-log read route (admin, filters, pagination) using the existing `listAuditEntries`.
+- [ ] **API-WS06-h** Verify migration 005 on real Postgres: CTE casts (uuid/text), `FOR UPDATE` inside the CTE, append-only triggers reject UPDATE/DELETE/TRUNCATE; needs PG >= 11 (`starts_with`/`make_interval`).
 - [ ] **API-WS06-c** Staff/admin `POST /profile` skips the project-indexed check (can write a profile for a non-existent project).
 - [ ] **API-WS06-d** Document auth response shapes: success envelope is `{success, data:{...}}` (openapi/README/postman).
 - [ ] **API-WS06-e** Deviations recorded: wallet sign-in replaces email/password; staff/admin 2FA dropped for now; API-12, 14, 16, 18, 22 deferred.
-- [ ] **API-WS06-f** `[USER-ACTION]` After review/commit: `docker compose exec -T api npm run migrate` then `npm run migrate:status` (expect 001-004 applied, 0 pending). Optional: set `ADMIN_WALLETS=<public MetaMask address>` in the api environment file then `docker compose restart api`. Production: `SESSION_COOKIE_SAMESITE=none` if frontend/API are on different registrable domains, `TRUST_PROXY=1`, `CORS_ORIGINS`, `AUTH_DOMAIN`. Frontend must send `credentials:'include'` (WS-06.3w).
+- [ ] **API-WS06-f** (migration 004 applied and ADMIN_WALLETS set, runtime-verified by the user 2026-11-06, not verified by Claude; production env items remain) `[USER-ACTION]` After review/commit: `docker compose exec -T api npm run migrate` then `npm run migrate:status` (expect 001-004 applied, 0 pending). Optional: set `ADMIN_WALLETS=<public MetaMask address>` in the api environment file then `docker compose restart api`. Production: `SESSION_COOKIE_SAMESITE=none` if frontend/API are on different registrable domains, `TRUST_PROXY=1`, `CORS_ORIGINS`, `AUTH_DOMAIN`. Frontend must send `credentials:'include'` (WS-06.3w).
 
 ## Phase 3: Founder application, manual KYC, agreement & repo
 

@@ -125,3 +125,68 @@ export async function touchSession(idHash: string): Promise<void> {
 export async function deleteSession(idHash: string): Promise<void> {
   await pool.query("DELETE FROM app.sessions WHERE id_hash = $1", [idHash]);
 }
+
+/** Removes every session that is past its absolute expiry or idle for longer than `idleSeconds`. */
+export async function deleteExpiredSessions(idleSeconds: number): Promise<void> {
+  await pool.query(
+    `DELETE FROM app.sessions WHERE expires_at <= now()
+       OR last_seen_at <= now() - make_interval(secs => $1::double precision)`,
+    [idleSeconds]
+  );
+}
+
+export interface UserListFilter {
+  role: Role | undefined;
+  /** Lowercase hex address prefix. */
+  addressPrefix: string | undefined;
+  limit: number;
+  offset: number;
+}
+
+export interface UserListItem {
+  id: string;
+  address: string;
+  role: Role;
+  createdAt: Date;
+  lastLoginAt: Date | null;
+}
+
+interface UserListRow {
+  id: string;
+  wallet_address: string;
+  role: Role;
+  created_at: Date;
+  last_login_at: Date | null;
+}
+
+const USER_FILTER_SQL = `WHERE ($1::text IS NULL OR role = $1::text)
+       AND ($2::text IS NULL OR starts_with(wallet_address, $2::text))`;
+
+export async function listUsers(
+  filter: UserListFilter
+): Promise<{ items: UserListItem[]; total: number }> {
+  const filterParams = [filter.role ?? null, filter.addressPrefix ?? null];
+  const [page, count] = await Promise.all([
+    pool.query<UserListRow>(
+      `SELECT id, wallet_address, role, created_at, last_login_at
+       FROM app.users ${USER_FILTER_SQL}
+       ORDER BY created_at DESC, id
+       LIMIT $3 OFFSET $4`,
+      [...filterParams, filter.limit, filter.offset]
+    ),
+    pool.query<{ total: string }>(
+      `SELECT count(*) AS total FROM app.users ${USER_FILTER_SQL}`,
+      filterParams
+    ),
+  ]);
+  return {
+    items: page.rows.map((row) => ({
+      id: row.id,
+      address: row.wallet_address,
+      role: row.role,
+      createdAt: row.created_at,
+      lastLoginAt: row.last_login_at,
+    })),
+    total: Number(count.rows[0]?.total ?? 0),
+  };
+}

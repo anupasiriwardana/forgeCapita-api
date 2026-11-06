@@ -1,13 +1,19 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { config } from "../config/env.js";
 import { AppError } from "../errors.js";
+import { logger } from "../logger.js";
+import { toLoggableError } from "../middlewares/errorHandler.js";
 import type { Role } from "../types/index.js";
 import { hasSessionCookie, readSessionToken, resolveSession } from "./session.js";
 
 const allowedOrigins: ReadonlySet<string> = new Set(config.CORS_ORIGINS);
 const SAFE_METHODS: ReadonlySet<string> = new Set(["GET", "HEAD", "OPTIONS"]);
 
-/** Attaches req.user when the request carries a valid session cookie; never rejects. */
+/**
+ * Attaches req.user when the request carries a valid session cookie; never rejects.
+ * A lookup failure is logged and the request continues anonymously, so public routes
+ * keep working and protected ones still answer 401 via requireAuth.
+ */
 export const loadSession: RequestHandler = async (req, _res, next) => {
   try {
     const token = readSessionToken(req.headers.cookie);
@@ -15,10 +21,10 @@ export const loadSession: RequestHandler = async (req, _res, next) => {
       const user = await resolveSession(token);
       if (user) req.user = user;
     }
-    next();
   } catch (err) {
-    next(err);
+    (req.log ?? logger).error({ err: toLoggableError(err) }, "session lookup failed");
   }
+  next();
 };
 
 export const requireAuth: RequestHandler = (req, _res, next) => {

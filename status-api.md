@@ -6,7 +6,11 @@
 **Port:** 3001  
 **Last Updated:** 2026-11-06  
 
-**Current focus:** Step: WS-06.2w (wallet sign-in, sessions, gated POST /profile) | State: awaiting-review | Updated: 2026-11-06
+**Current focus:** Step: WS-06.7w (admin role assignment, append-only audit_log migration 005, GET admin users, API-WS06-a/b) | State: awaiting-review | Updated: 2026-11-06
+
+**WS-06.7w done (tracker-verified by reading code and `docker compose exec -T api npm test` 145/145; tsc only TS1295/TS1287; NOT run on real Postgres).** Admin routes `PATCH /api/v1/admin/users/:address/role` (admin only) and `GET /api/v1/admin/users` (admin, staff); `admin` never assignable; audit rows in append-only `app.audit_log`; target sessions revoked on role change; loadSession degrades to anonymous; expired sessions cleaned on login. USER-ACTION after review/commit: `docker compose exec -T api npm run migrate` (expect 001-005), `npm run migrate:status` (0 pending), `docker compose restart api`, GET /ready ok. The role route is only reachable from a frontend with an admin session (no UI yet), so confirm via migrate status and /ready.
+
+**WS-06.2w RUNTIME-VERIFIED by the user 2026-11-06 (not verified by Claude):** wallet sign-in works end to end with the frontend (WS-06.3w), `ADMIN_WALLETS` wallet gets role admin, session persists after reload, other wallets are investor, CORS fine. USER-ACTION after WS-06.7w review/commit: `docker compose exec -T api npm run migrate` (expect 001-005 applied).
 
 **USER-CONFIRMED 2026-11-06 (not verified by Claude; `.env*` not read):** migration 004 applied (`migrate:status` shows 001-004 applied) and `ADMIN_WALLETS` configured in the api env file. Whether the api was restarted after setting `ADMIN_WALLETS` is NOT stated: restart it (`docker compose restart api`) before checking that the admin wallet gets the `admin` role.
 
@@ -127,6 +131,10 @@ The backlog was rewritten to a production-grade plan. Key changes from what this
 Note: the list response is now `{ items, total, limit, offset }` (was a bare array); the Postman collection in `postman/` still reflects the old shapes (update later).
 
 ## Change log
+
+2026-11-06  WS-06.7w  Admin role assignment + GET users, migration 005 audit_log (append-only), session revocation, API-WS06-a/b done; API-21 partial  - verified by: read migration/repo/service/routes/middleware, npm test 145/145 in container, tsc filtered; Postgres runtime not verified
+
+2026-11-06  WS-06.2w  Runtime verification recorded (sign-in, admin via ADMIN_WALLETS, session persistence, CORS); WS-06.7w selected  - verified by: USER REPORT only, not verified by Claude
 
 2026-11-05  WS-01.4  Follow-up: profile-write limiter now created once (`profileLimiter`) and shared by /api/v1/projects and /api/projects (fixes doubled 10/min limit)  - verified by: read app.ts lines 104-109; 117/117 tests run by main session (`docker compose exec -T api npm test`), not re-run by tracker
 

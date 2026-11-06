@@ -60,6 +60,17 @@ Responses use the usual `{success, data}` envelope. Sessions last 30 days (absol
 | `SESSION_COOKIE_SAMESITE` | `lax` | `lax` or `none` (`none` forces `Secure`) |
 | `AUTH_RATE_LIMIT_MAX` | `10` | Per-window limit shared by `/auth/nonce` and `/auth/verify` |
 
+## Admin API
+
+Run `npm run migrate` for migration 005 (`app.audit_log`, append-only: triggers reject UPDATE, DELETE and TRUNCATE). All responses are `Cache-Control: no-store`.
+
+| Endpoint | Access | Purpose |
+|---|---|---|
+| `PATCH /api/v1/admin/users/:address/role` `{role}` | `admin` | Set a role to `founder`, `staff` or `investor`; returns `{user:{id,address,role}}` |
+| `GET /api/v1/admin/users?limit&offset&role&q` | `admin`, `staff` | Paged user list (`q` is a lowercase hex address prefix); `{items,total,limit,offset}` |
+
+`admin` is never assignable through the API (grant it via `ADMIN_WALLETS`). Admins, `ADMIN_WALLETS` wallets, unknown users and self-changes are rejected (`403`/`404`). A role change updates the user, writes one audit row (actor, target, before/after, IP) and deletes the target's sessions in a single SQL statement, so the new role applies on their next sign-in. Each successful login also deletes expired and idle sessions.
+
 ## Probes, versioning and OpenAPI
 
 - `GET /health` is liveness; `GET /ready` returns `200` when the DB is reachable and every migration is applied, else `503 {"success":false,"error":"Not ready"}`. Both are exempt from rate limiting and request logs. Indexer reachability is deferred (the API has no indexer URL; both share the same Neon DB).

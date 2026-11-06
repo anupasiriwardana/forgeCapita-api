@@ -13,6 +13,7 @@ import { readiness } from "./controllers/healthController.js";
 import { openApiDocument } from "./openapi.js";
 import healthRoutes from "./routes/healthRoutes.js";
 import { loadSession } from "./auth/middleware.js";
+import { createAdminRoutes } from "./routes/adminRoutes.js";
 import { createAuthRoutes } from "./routes/authRoutes.js";
 import { createProjectRoutes } from "./routes/projectRoutes.js";
 
@@ -111,6 +112,13 @@ export function createApp(): Express {
     max: config.AUTH_RATE_LIMIT_MAX,
   });
   app.use("/api/v1/auth", createAuthRoutes(authLimiter));
+
+  // ONE limiter instance for the admin write route.
+  const adminLimiter = createLimiter({
+    windowMs: config.RATE_LIMIT_WINDOW_MS,
+    max: config.PROFILE_RATE_LIMIT_MAX,
+  });
+  app.use("/api/v1/admin", createAdminRoutes(adminLimiter));
 
   // /api/projects is a deprecated alias of /api/v1/projects. Both mounts share ONE profile limiter
   // instance, so the write limit cannot be doubled by alternating between the two paths.

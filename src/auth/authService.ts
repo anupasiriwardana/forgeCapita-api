@@ -1,10 +1,13 @@
 import { getAddress } from "ethers";
 import { config } from "../config/env.js";
 import { AppError } from "../errors.js";
+import { logger } from "../logger.js";
+import { toLoggableError } from "../middlewares/errorHandler.js";
 import type { AuthUser } from "../types/index.js";
 import {
   consumeNonce,
   deleteExpiredNonces,
+  deleteExpiredSessions,
   insertSession,
   pruneSessions,
   upsertNonce,
@@ -12,6 +15,7 @@ import {
 } from "./authRepository.js";
 import {
   MAX_SESSIONS_PER_USER,
+  SESSION_IDLE_MS,
   SESSION_MAX_AGE_MS,
   createSessionToken,
   hashSessionToken,
@@ -60,6 +64,10 @@ export async function login(
   const stored = await consumeNonce(normalized);
   if (!stored || stored.expiresAt.getTime() <= Date.now()) throw signInFailed();
   if (!signatureMatches(stored.message, signature, normalized)) throw signInFailed();
+
+  void deleteExpiredSessions(SESSION_IDLE_MS / 1000).catch((err: unknown) => {
+    logger.warn({ err: toLoggableError(err) }, "expired session cleanup failed");
+  });
 
   const user = await upsertUser(normalized, config.ADMIN_WALLETS.includes(normalized));
   const token = createSessionToken();
