@@ -68,6 +68,9 @@ export async function requestShadowWallet(
     throw new AppError(400, "Invalid address");
   }
   if (address === ZeroAddress) throw new AppError(400, "Invalid address");
+  if (address === user.address.toLowerCase()) {
+    throw new AppError(400, "Use a dedicated wallet, not your login wallet");
+  }
   try {
     return await insertShadowWallet(user.id, user.address.toLowerCase(), address, ip);
   } catch (err) {

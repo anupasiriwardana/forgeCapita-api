@@ -129,6 +129,8 @@ Item IDs (`API-xx`) are referenced from `ROADMAP.md`. Plan revised 2026-10-28.
 - [ ] **API-WS07-t** Verify migration 008 and the `upsertProfile` CTE on real Postgres (`$11::uuid`/`$12::text` casts, COALESCE, partial unique indexes, audit only on change) plus a smoke bind/rebind.
 - [ ] **API-WS07-u** `[USER-ACTION]` After review/commit: `docker compose exec -T api npm run migrate` (expect 001-008), `npm run migrate:status` (0 pending), `docker compose restart api`, GET /ready ok.
 - [ ] **API-WS07-o** Frontend for agreement, shadow wallet and eligibility (WS-07.5l) and gating the create-project page on eligibility (with API-WS07-h).
+- [x] **API-WS07-v** (WS-07.5m, DONE 2026-11-06; 189 tests pass per dev report, tracker did not re-run) `requestShadowWallet` rejects 400 "Use a dedicated wallet, not your login wallet" when the address equals the requester's login wallet (case-insensitive); test added in `tests/founders.test.ts`. Limitation: it only checks the founder's own login wallet, not other founders' personal wallets.
+- [ ] **API-WS07-w** Cross-reference (no API work): the factory is permissionless, so the founder gate is the website only. Consider an on-chain founder allowlist (tracked in the frontend backlog; contracts idea CON-04.1 in `forgecapita-contracts/backlog-contracts.md`, v3).
 
 ### Application workflow
 - [ ] **API-30** `POST /api/v1/applications` (founder). State machine: `DRAFT → PENDING → CHANGES_REQUESTED ↔ PENDING → APPROVED | REJECTED`, plus `ROGUE` (set by sync). Every transition recorded in `application_history` (actor, from, to, note, time). Founders can edit only in `DRAFT` / `CHANGES_REQUESTED`.
@@ -200,6 +202,7 @@ Item IDs (`API-xx`) are referenced from `ROADMAP.md`. Plan revised 2026-10-28.
 - [ ] **API-90** Multi-stage `Dockerfile` (build TypeScript, run production bundle as non-root without devDependencies); separate entrypoint for the Secret Shopper worker.
 - [ ] **API-91** Jest + supertest integration suite: health, accounts / sessions / CSRF / lockout, RBAC matrix, application state machine, KYC and agreement flows, reconciliation maths (tolerance, stablecoin), compliance transitions, relay intake validation and queue policy (mocked chain).
 - [ ] **API-92** Unit tests for signature verification (wallet linking + relay payloads), gas-average and send-by calculations.
+- [ ] **API-99** (added 2026-11-06, design dependency) `POST /projects/profile` returns 404 'Project not found.' for founders whenever the indexer has not yet indexed the project (founder ownership is checked against indexed data), so post-launch profile saves depend on indexer freshness (see IDX-59). Add an optional on-chain fallback: verify the developer via the factory event / escrow read when the project is not indexed yet.
 - [ ] **API-93** `npm audit` in CI; dependency update policy; pin Node 22 LTS.
 - [ ] **API-94** `[USER-ACTION]` GitHub Actions CI (lint, typecheck, test, audit) per repo.
 - [ ] **API-95** Refresh `api-instructions.md` to match this backlog (it still references Sepolia and old function names).

@@ -181,6 +181,13 @@ describe("shadow wallet", () => {
     expect(params[2]).toBe(SHADOW);
   });
 
+  it("rejects the founder's own login wallet", async () => {
+    mockSession(mockQuery, "founder", founder.address);
+    const res = await post("/api/v1/founders/me/shadow-wallet", { address: founder.address.toUpperCase().replace("0X", "0x") });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Use a dedicated wallet, not your login wallet");
+  });
+
   it("rejects the zero address, bad input and duplicates", async () => {
     mockSession(mockQuery, "founder", founder.address);
     expect((await post("/api/v1/founders/me/shadow-wallet", { address: "0x" + "00".repeat(20) })).status).toBe(400);
