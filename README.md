@@ -39,3 +39,10 @@ Response: `{ "success": true, "data": { "items": [...], "total": N, "limit": N, 
 Every on-chain `bigint` value (`fundingGoal`, `totalRaised`, `fundingDeadline`, `totalStaked`, `createdAt`, ...) is a decimal string, or `null` when unset; never parse it as a JS number. `chainId` and the milestone indexes are plain numbers. Each item has `profile: null` when no profile exists, otherwise only the public fields `name`, `description`, `logoUrl`, `pitchDeckUrl`, `founderBio`, `websiteUrl`, `category`, `updatedAt`. `shadow_wallet` and `kyc_verified` are never returned.
 
 `POST /api/projects/profile` upserts a profile for a composite `projectId` (optional `category`). It is currently unauthenticated (TODO API-20, WS-06) and rate limited.
+
+## Probes, versioning and OpenAPI
+
+- `GET /health` is liveness; `GET /ready` returns `200` when the DB is reachable and every migration is applied, else `503 {"success":false,"error":"Not ready"}`. Both are exempt from rate limiting and request logs. Indexer reachability is deferred (the API has no indexer URL; both share the same Neon DB).
+- Canonical routes are `/api/v1/projects`. `/api/projects` is a deprecated alias (same handlers, no redirect) to be removed once the frontend moves to `/api/v1`. The Postman collection is stale and still uses `/api/projects`.
+- `GET /api/v1/openapi.json` serves a hand-written OpenAPI 3.0.3 document (`src/openapi.ts`) outside production only; in production it is a normal 404. Deferred: a generated/zod-derived document, an `/api/docs` HTML UI and a drift check.
+- The container has `sh` only: use `docker compose exec api sh`. `ponder_rpc_cache_1` in Neon is Ponder's RPC cache, not the API's.

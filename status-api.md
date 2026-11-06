@@ -6,7 +6,11 @@
 **Port:** 3001  
 **Last Updated:** 2026-11-05  
 
-**Current focus:** Step: WS-01.3b (API-07 rest, API-08 partial) | State: awaiting-review (code done; migration 003 NOT yet applied) | Updated: 2026-11-05  
+**Current focus:** Step: WS-01.4 (API-09 /ready, API-10 /api/v1 + openapi.json; lean) | State: awaiting-review | Updated: 2026-11-05  
+
+**User steps after review:** commit; the API reloads via tsx watch (or `docker compose restart api`); then `Invoke-RestMethod http://localhost:3001/ready` (expect success true), `Invoke-RestMethod "http://localhost:3001/api/v1/projects?limit=2"`, `Invoke-RestMethod "http://localhost:3001/api/projects?limit=2"`, `Invoke-RestMethod http://localhost:3001/api/v1/openapi.json`.
+
+**Minor finding (WS-01.4):** `createApp` builds one profile limiter per mount (`/api/v1/projects` and `/api/projects`), so `POST /profile` has two separate 10/min buckets per client: the write limit is effectively doubled for an abuser. Fix: create one `createLimiter(...)` instance before the loop and pass it to both `createProjectRoutes` calls (one line). Not fixed (tracker does not edit source).  
 
 ---
 
@@ -116,20 +120,15 @@ The backlog was rewritten to a production-grade plan. Key changes from what this
 4. [ ] API-30 to API-40 application, KYC, agreement and repo workflow.
 5. [ ] After contracts v2 are deployed: API-70 to API-80 relayer.
 
-## BLOCKED - WS-01.3b (user actions pending; not a blocker for review)
-Why: migration 003 is written but not applied; the new endpoints need it.
-You need to do:
-1. Commit.
-2. `docker compose exec -T api npm run migrate` (applies 003).
-3. `docker compose exec -T api npm run migrate:status` (001-003 applied, 0 pending).
-4. `docker compose restart api`, then check /health/db.
-5. Sample requests: `Invoke-RestMethod "http://localhost:3001/api/projects?limit=5"`, `...?chainId=421614&state=COMPLETED`, `...?sort=total_raised&order=desc`, `Invoke-RestMethod "http://localhost:3001/api/projects/421614:0xd2eec04febba72507db202dff5a269f26fc56346"` (and a chain 97 id).
-How to confirm (no secrets in chat): expect string amounts, `profile: null`, `total` counted (BSC may be lower while its backfill runs), 404 for an unknown id, 400 for `limit=500`.
-Then run: /next-task WS-01.4
+(WS-01.3b BLOCKED section removed 2026-11-05: user confirmed committed, migration 003 applied, 3 applied / 0 pending, /health/db ok, sample requests work; user-reported, not verified by Claude.)
 
 Note: the list response is now `{ items, total, limit, offset }` (was a bare array); the Postman collection in `postman/` still reflects the old shapes (update later).
 
 ## Change log
+
+2026-11-05  WS-01.4  Follow-up: profile-write limiter now created once (`profileLimiter`) and shared by /api/v1/projects and /api/projects (fixes doubled 10/min limit)  - verified by: read app.ts lines 104-109; 117/117 tests run by main session (`docker compose exec -T api npm test`), not re-run by tracker
+
+2026-11-05  WS-01.4  API-09 ticked (/ready: DB + migrations, generic 503; indexer reachability deferred); API-10 partial (/api/v1 + deprecated /api/projects alias, hand-written openapi.json non-production only; /api/docs, generated doc, drift check, alias removal deferred); API-98 ticked (README)  - verified by: reading app.ts, healthController.ts, openapi.ts (routes/query names match projectSchemas, error envelope matches errorHandler), README, 6 new tests (assert real status/body, not vacuous); `docker compose exec -T api npm test` 117/117; `npx tsc --noEmit` 129 errors, only TS1295 (77) / TS1287 (52) (API-96). NOT verified: live server or Postgres; production 404 for openapi.json; /ready rate-limit and log exemption (regex read only); alias POST /profile not tested
 
 2026-11-05  WS-01.3b  API-07 ticked; API-08 partial (chain_id, category, pagination, search, filters, sort done; application_status/repo_* deferred to API-30/API-35, owner to WS-06); API-98 README part partial (migrate commands present, sh/bash and ponder_rpc_cache notes missing); migration 003, projectRepository/Service/Schemas, README; no shadow_wallet/kyc_verified in any response  - verified by: reading all files, `docker compose exec -T api npm test` 111/111 (5 suites), `npx tsc --noEmit` 123 errors all TS1295 (73) / TS1287 (50) (API-96); NOT verified: SQL on Postgres, migration 003 not run, Ponder column names against the live schema (checked against ponder.schema.ts only)
 

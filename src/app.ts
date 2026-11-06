@@ -9,13 +9,15 @@ import { logger } from "./logger.js";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 import { createLimiter } from "./middlewares/rateLimit.js";
 import { requestId } from "./middlewares/requestId.js";
+import { readiness } from "./controllers/healthController.js";
+import { openApiDocument } from "./openapi.js";
 import healthRoutes from "./routes/healthRoutes.js";
 import { createProjectRoutes } from "./routes/projectRoutes.js";
 
 const allowedOrigins: ReadonlySet<string> = new Set(config.CORS_ORIGINS);
 
-/** Liveness path with or without a trailing slash (Express strict routing is off). */
-const LIVENESS_PATH = /^\/health\/?$/;
+/** Liveness and readiness probes, with or without a trailing slash (exempt from limiting and request logs). */
+const LIVENESS_PATH = /^\/(health|ready)\/?$/;
 
 function requestPath(url: string | undefined): string {
   return (url ?? "").split("?")[0] ?? "";
@@ -89,15 +91,23 @@ export function createApp(): Express {
   app.use(express.json({ limit: config.BODY_LIMIT, strict: true }));
 
   app.use("/health", healthRoutes);
-  app.use(
-    "/api/projects",
-    createProjectRoutes(
-      createLimiter({
-        windowMs: config.RATE_LIMIT_WINDOW_MS,
-        max: config.PROFILE_RATE_LIMIT_MAX,
-      })
-    )
-  );
+  app.get("/ready", readiness);
+
+  if (config.NODE_ENV !== "production") {
+    app.get("/api/v1/openapi.json", (_req: Request, res: Response) => {
+      res.json(openApiDocument);
+    });
+  }
+
+  // /api/projects is a deprecated alias of /api/v1/projects. Both mounts share ONE profile limiter
+  // instance, so the write limit cannot be doubled by alternating between the two paths.
+  const profileLimiter = createLimiter({
+    windowMs: config.RATE_LIMIT_WINDOW_MS,
+    max: config.PROFILE_RATE_LIMIT_MAX,
+  });
+  for (const base of ["/api/v1/projects", "/api/projects"]) {
+    app.use(base, createProjectRoutes(profileLimiter));
+  }
 
   app.use(notFoundHandler);
   app.use(errorHandler);

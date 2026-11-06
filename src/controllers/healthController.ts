@@ -1,4 +1,6 @@
+import { resolve } from "node:path";
 import type { Request, Response } from "express";
+import { verifyMigrationsApplied } from "../db/migrationRunner.js";
 import { pool } from "../db/pool.js";
 import { toLoggableError } from "../middlewares/errorHandler.js";
 import { logger } from "../logger.js";
@@ -32,5 +34,19 @@ export async function databaseHealth(req: Request, res: Response): Promise<void>
       success: false,
       error: "Database unavailable",
     } satisfies ApiResponse);
+  }
+}
+
+/**
+ * GET /ready
+ * Readiness: the DB is reachable and every migration is applied. The cause is logged, never returned.
+ */
+export async function readiness(req: Request, res: Response): Promise<void> {
+  try {
+    await verifyMigrationsApplied(pool, resolve(process.cwd(), "migrations"));
+    res.status(200).json({ success: true, data: { status: "ready" } } satisfies ApiResponse);
+  } catch (err) {
+    (req.log ?? logger).error({ err: toLoggableError(err) }, "readiness check failed");
+    res.status(503).json({ success: false, error: "Not ready" } satisfies ApiResponse);
   }
 }

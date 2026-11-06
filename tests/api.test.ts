@@ -20,7 +20,7 @@ const mockQuery = jest.fn();
 jest.mock("pg", () => ({
   Pool: jest.fn().mockImplementation(() => ({
     query: mockQuery,
-    connect: jest.fn().mockResolvedValue({ release: jest.fn() }),
+    connect: jest.fn().mockResolvedValue({ query: mockQuery, release: jest.fn() }),
     end: jest.fn(),
   })),
 }));
@@ -286,5 +286,54 @@ describe("GET /api/projects/:projectId", () => {
       expect(res.status).toBe(400);
     }
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /ready", () => {
+  it("returns 200 when no migration is pending", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: Array.from({ length: 99 }, (_, i) => ({ version: i + 1, name: `m${i + 1}`, checksum: "x" })),
+    });
+    const res = await request(app).get("/ready");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ success: true, data: { status: "ready" } });
+  });
+
+  it("returns 503 with a generic body when the query rejects", async () => {
+    mockQuery.mockRejectedValueOnce(new Error("secret db detail"));
+    const res = await request(app).get("/ready");
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ success: false, error: "Not ready" });
+  });
+
+  it("returns 503 when a migration is pending", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    const res = await request(app).get("/ready");
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ success: false, error: "Not ready" });
+  });
+});
+
+describe("/api/v1 prefix and OpenAPI", () => {
+  it("serves the list on /api/v1/projects and the legacy /api/projects alias", async () => {
+    for (const base of ["/api/v1/projects", "/api/projects"]) {
+      mockListAndCount([projectRow], "1");
+      const res = await request(app).get(base);
+      expect(res.status).toBe(200);
+      expect(res.body.data.items[0].id).toBe(ID);
+    }
+  });
+
+  it("returns 404 on /api/v1/projects/:id for an unknown id", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const res = await request(app).get(`/api/v1/projects/97:${ESCROW}`);
+    expect(res.status).toBe(404);
+  });
+
+  it("serves openapi.json outside production", async () => {
+    const res = await request(app).get("/api/v1/openapi.json");
+    expect(res.status).toBe(200);
+    expect(res.body.openapi).toBe("3.0.3");
+    expect(Object.keys(res.body.paths)).toContain("/api/v1/projects");
   });
 });
