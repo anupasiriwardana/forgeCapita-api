@@ -18,6 +18,13 @@ export const REDACT_PATHS: string[] = [
   "*.cookie",
   "*.secret",
   "*.privateKey",
+  "*.RELAYER_PRIVATE_KEY",
+  "*.args",
+  "*.calldata",
+  "signature",
+  "privateKey",
+  "RELAYER_PRIVATE_KEY",
+  "args",
   "*.DATABASE_URL",
   "*.connectionString",
 ];

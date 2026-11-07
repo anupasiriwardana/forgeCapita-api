@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import { MigrationError, verifyMigrationsApplied } from "./db/migrationRunner.js";
 import { pool } from "./db/pool.js";
 import { logger } from "./logger.js";
+import { initRelay } from "./relay/chains.js";
+import { startRelayWorker } from "./relay/relayWorker.js";
 import { startReconcileJob } from "./drafts/reconcile.js";
 import { toLoggableError } from "./middlewares/errorHandler.js";
 

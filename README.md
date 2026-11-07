@@ -112,6 +112,19 @@ Run `npm run migrate` for migration 009. The profile and the shadow wallet reser
 
 Reconcile job: every `DRAFT_RECONCILE_INTERVAL_MS` (default `15000`, minimum `5000`; not started when `NODE_ENV=test`) under a Postgres advisory lock. Matched drafts become `applied` (`conflict` when a profile already exists for the project); pending drafts older than 7 days become `expired`. `GET /founders/me` wallets carry `reserved`.
 
+## Gasless relayer
+
+Run `npm run migrate` for migration 010. The API can send claim, stake and vote transactions from a relayer wallet that is allow-listed in the registry. Refund, unstake, yield claims and investing are always user-paid. Disabled unless `RELAYER_ENABLED=true` and `RELAYER_PRIVATE_KEY` plus `RPC_URL_<chainId>` are set (see `.env.example`); otherwise every relay route answers `503 {code:"RELAY_DISABLED"}` and the server boots normally. A chain is also disabled when the relayer is not allow-listed there.
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/relay/claim` `{projectId}` | Claim the session wallet tokens |
+| `POST /api/v1/relay/vote` `{projectId,support,deadline,signature}` | EIP-712 vote over the CURRENT on-chain milestone index (read by the server) |
+| `POST /api/v1/relay/stake` `{projectId,amount,deadline,signature}` | ERC-2612 permit stake; `amount` is a wei decimal string |
+| `GET /api/v1/relay/:id`, `GET /api/v1/relay?limit` | Own requests only |
+
+All routes need a session; writes need a same-origin request. Intake simulates the call as the relayer: a revert is never queued and maps to a stable `code` (`SELF_PAY`, `ALREADY_VOTED`, `NO_VOTING_POWER`, `VOTING_ENDED`, `ALREADY_CLAIMED`, `FUNDING_ACTIVE`, `SIMULATION_FAILED`). Other codes: `GAS_TOO_HIGH`, `USER_DAILY_LIMIT`, `CHAIN_DAILY_LIMIT`, `RELAYER_LOW_BALANCE`, `SIGNATURE_MISMATCH`. `202 {id,status}` on accept, `200` on an idempotent repeat. A worker (every 3 s, not under `NODE_ENV=test`) moves requests QUEUED, SENDING, SENT, CONFIRMED (or FAILED/EXPIRED); rows left SENDING without a hash at boot are failed as `INTERRUPTED`.
+
 ## Probes, versioning and OpenAPI
 
 - `GET /health` is liveness; `GET /ready` returns `200` when the DB is reachable and every migration is applied, else `503 {"success":false,"error":"Not ready"}`. Both are exempt from rate limiting and request logs. Indexer reachability is deferred (the API has no indexer URL; both share the same Neon DB).

@@ -46,6 +46,23 @@ export function parseAdminWallets(raw: string): string[] | null {
   return entries.map((entry) => entry.toLowerCase());
 }
 
+/** Treats an empty variable (KEY=) as unset. */
+function emptyAsUndefined<T extends z.ZodType>(schema: T) {
+  return z.preprocess((value) => (value === "" ? undefined : value), schema);
+}
+
+function gweiSchema(fallback: string): z.ZodDefault<z.ZodString> {
+  return z
+    .string()
+    .regex(/^d{1,6}(.d{1,9})?$/, "must be a positive decimal gwei amount")
+    .refine((value) => Number(value) > 0, "must be positive")
+    .default(fallback);
+}
+
+function weiSchema(fallback: string): z.ZodDefault<z.ZodString> {
+  return z.string().regex(/^d{1,30}$/, "must be an integer wei amount").default(fallback);
+}
+
 export const envSchema = z
   .object({
     DATABASE_URL: z
@@ -72,6 +89,25 @@ export const envSchema = z
     AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(100_000).default(10),
     DRAFT_RECONCILE_INTERVAL_MS: z.coerce.number().int().min(5000).max(3_600_000).default(15_000),
     ADMIN_WALLETS: z.string().optional(),
+    RELAYER_ENABLED: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((value) => value === "true"),
+    // Read only by src/relay/signer.ts; never log or echo it.
+    RELAYER_PRIVATE_KEY: emptyAsUndefined(z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional()),
+    RELAYER_REGISTRY_ADDRESS: z
+      .string()
+      .regex(/^0x[a-fA-F0-9]{40}$/)
+      .default("0x2e6A22fd249930b9F2905D1bD66443CbE366AacB"),
+    RPC_URL_421614: emptyAsUndefined(z.string().url().startsWith("https://").optional()),
+    RPC_URL_97: emptyAsUndefined(z.string().url().startsWith("https://").optional()),
+    RELAYER_MAX_GAS_PRICE_GWEI_421614: gweiSchema("1"),
+    RELAYER_MAX_GAS_PRICE_GWEI_97: gweiSchema("10"),
+    RELAYER_MIN_BALANCE_WEI_421614: weiSchema("100000000000000"),
+    RELAYER_MIN_BALANCE_WEI_97: weiSchema("1000000000000000"),
+    RELAYER_USER_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(20),
+    RELAYER_CHAIN_DAILY_LIMIT: z.coerce.number().int().min(1).max(100_000).default(500),
+    RELAYER_CONFIRMATIONS: z.coerce.number().int().min(1).max(64).default(2),
     AUTH_DOMAIN: z
       .string()
       .trim()
