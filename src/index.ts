@@ -39,6 +39,11 @@ async function boot(): Promise<void> {
 
   const stopReconcile = startReconcileJob();
 
+  // Gasless relayer: never throws; stays disabled (routes answer RELAY_DISABLED) unless the
+  // env enables it and a chain passes its startup checks. Logs the relayer ADDRESS only.
+  await initRelay();
+  const stopRelay = startRelayWorker();
+
   process.on("unhandledRejection", (reason) => {
     logger.fatal({ err: reason }, "Unhandled promise rejection");
     process.exit(1);
@@ -60,7 +65,7 @@ async function boot(): Promise<void> {
 
     server.close((closeErr) => {
       if (closeErr) logger.error({ err: closeErr }, "Error closing HTTP server");
-      (stopReconcile ? stopReconcile() : Promise.resolve())
+      Promise.all([stopReconcile ? stopReconcile() : undefined, stopRelay ? stopRelay() : undefined])
         .then(() => pool.end())
         .then(() => process.exit(0))
         .catch((err: unknown) => {

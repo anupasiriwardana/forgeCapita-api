@@ -54,13 +54,13 @@ function emptyAsUndefined<T extends z.ZodType>(schema: T) {
 function gweiSchema(fallback: string): z.ZodDefault<z.ZodString> {
   return z
     .string()
-    .regex(/^d{1,6}(.d{1,9})?$/, "must be a positive decimal gwei amount")
+    .regex(/^\d{1,6}(\.\d{1,9})?$/, "must be a positive decimal gwei amount")
     .refine((value) => Number(value) > 0, "must be positive")
     .default(fallback);
 }
 
 function weiSchema(fallback: string): z.ZodDefault<z.ZodString> {
-  return z.string().regex(/^d{1,30}$/, "must be an integer wei amount").default(fallback);
+  return z.string().regex(/^\d{1,30}$/, "must be an integer wei amount").default(fallback);
 }
 
 export const envSchema = z
@@ -94,7 +94,7 @@ export const envSchema = z
       .default("false")
       .transform((value) => value === "true"),
     // Read only by src/relay/signer.ts; never log or echo it.
-    RELAYER_PRIVATE_KEY: emptyAsUndefined(z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional()),
+    RELAYER_PRIVATE_KEY: emptyAsUndefined(z.string().regex(/^0x[a-fA-F0-9]{64}$/, "must be 0x followed by 64 hex characters (no quotes or spaces)").optional()),
     RELAYER_REGISTRY_ADDRESS: z
       .string()
       .regex(/^0x[a-fA-F0-9]{40}$/)
