@@ -25,6 +25,11 @@ export const escrowInterface = new Interface([
   "function claimTokensFor(address account)",
   "function voteBySig(address voter, bool support, uint256 deadline, bytes signature)",
   "function currentMilestoneIndex() view returns (uint256)",
+  "function executeMilestone()",
+  "function projectCancelled() view returns (bool)",
+  "function completed() view returns (bool)",
+  "function votingEndTime(uint256 index) view returns (uint256)",
+  "function milestones(uint256 index) view returns (string description, uint256 unlockPercentage, bool isVotingOpen, bool isExecuted, uint256 yesVotes, uint256 noVotes, uint256 votingStartTime)",
 ]);
 export const distributorInterface = new Interface([
   "function stakeWithPermit(address owner, uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s)",

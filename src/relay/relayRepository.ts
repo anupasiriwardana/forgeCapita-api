@@ -1,6 +1,6 @@
 import { pool, qualified } from "../db/pool.js";
 
-export type RelayKind = "claim" | "stake" | "vote";
+export type RelayKind = "claim" | "stake" | "vote" | "execute";
 export type RelayStatus = "QUEUED" | "SENDING" | "SENT" | "CONFIRMED" | "FAILED" | "EXPIRED";
 
 /** Client-safe view of a request: never carries `args` (calldata with the signature). */
@@ -33,7 +33,8 @@ export interface NewRelayRequest {
   kind: RelayKind;
   chainId: number;
   projectId: string;
-  userId: string;
+  /** null only for system `execute` requests. */
+  userId: string | null;
   account: string;
   payload: Record<string, unknown>;
   args: { to: string; data: string };
@@ -281,4 +282,118 @@ export async function listSent(chainId: number, limit: number): Promise<SentRela
     [chainId, limit]
   );
   return result.rows.map((row) => ({ id: row.id, txHash: row.tx_hash }));
+}
+
+// --- Automatic milestone execution -------------------------------------------
+
+export interface ExecuteCandidate {
+  projectId: string;
+  chainId: number;
+  escrowAddress: string;
+  milestoneIndex: number;
+}
+
+interface CandidateRow {
+  project_id: string;
+  chain_id: number;
+  escrow_address: string;
+  milestone_index: number;
+}
+
+/**
+ * Indexed projects whose current milestone is open, unexecuted and past its indexed voting end
+ * (`endedBefore`, unix seconds). Milestones that already have a live/confirmed execute row, or a
+ * SELF_PAY failure, are left out so they cannot starve the batch. The chain stays authoritative.
+ */
+export async function listExecuteCandidates(
+  chainId: number,
+  endedBefore: bigint,
+  limit: number
+): Promise<ExecuteCandidate[]> {
+  const result = await pool.query<CandidateRow>(
+    `SELECT p."id" AS project_id, p."chain_id", p."escrow_address", m."milestone_index"
+     FROM ${qualified("project")} p
+     JOIN ${qualified("milestone")} m
+       ON m."project_id" = p."id" AND m."milestone_index" = p."current_milestone_index"
+     WHERE p."chain_id" = $1 AND p."state" = 'ACTIVE' AND p."is_invalidated" = false
+       AND p."cancelled_at" IS NULL
+       AND m."is_voting_open" = true AND m."is_executed" = false AND m."is_failed" = false
+       AND m."voting_end_time" <= $2::numeric
+       AND NOT EXISTS (
+         SELECT 1 FROM app.relay_requests r
+         WHERE r.kind = 'execute'
+           AND r.idem_key = 'execute:' || p."chain_id" || ':' || lower(p."escrow_address") || ':' || m."milestone_index"
+           AND (r.status NOT IN ('FAILED', 'EXPIRED') OR r.error_code = 'SELF_PAY')
+       )
+     ORDER BY m."voting_end_time" LIMIT $3`,
+    [chainId, endedBefore.toString(), limit]
+  );
+  return result.rows.map((row) => ({
+    projectId: row.project_id,
+    chainId: row.chain_id,
+    escrowAddress: row.escrow_address.toLowerCase(),
+    milestoneIndex: row.milestone_index,
+  }));
+}
+
+export interface ExecuteHistory {
+  /** A QUEUED/SENDING/SENT/CONFIRMED row exists for the key. */
+  live: boolean;
+  selfPay: boolean;
+  /** FAILED or EXPIRED rows (including renamed earlier attempts). */
+  failures: number;
+  lastAttemptAt: Date | null;
+}
+
+interface HistoryRow {
+  status: RelayStatus;
+  error_code: string | null;
+  created_at: Date;
+}
+
+/** Earlier execute attempts for one key, including rows renamed by a retry. */
+export async function executeHistory(idemKey: string): Promise<ExecuteHistory> {
+  const result = await pool.query<HistoryRow>(
+    `SELECT status, error_code, created_at FROM app.relay_requests
+     WHERE kind = 'execute' AND (idem_key = $1 OR idem_key LIKE $2)
+     ORDER BY created_at DESC LIMIT 50`,
+    [idemKey, `${idemKey}:%`]
+  );
+  const history: ExecuteHistory = { live: false, selfPay: false, failures: 0, lastAttemptAt: null };
+  for (const row of result.rows) {
+    history.lastAttemptAt ??= row.created_at;
+    if (row.status === "FAILED" || row.status === "EXPIRED") history.failures += 1;
+    else history.live = true;
+    if (row.error_code === "SELF_PAY") history.selfPay = true;
+  }
+  return history;
+}
+
+/** Records a failed system attempt (so it is visible and counted); a previous row with the key is renamed. */
+export async function recordExecuteFailure(
+  request: Omit<NewRelayRequest, "kind" | "userId" | "expiresAt">,
+  errorCode: string,
+  errorMessage: string
+): Promise<void> {
+  await pool.query(
+    `UPDATE app.relay_requests SET idem_key = idem_key || ':' || id::text
+     WHERE idem_key = $1 AND status IN ('FAILED', 'EXPIRED')`,
+    [request.idemKey]
+  );
+  await pool.query(
+    `INSERT INTO app.relay_requests
+       (kind, chain_id, project_id, user_id, account, payload, args, idem_key, status, error_code, error_message, expires_at)
+     VALUES ('execute', $1, $2, NULL, $3, $4::jsonb, $5::jsonb, $6, 'FAILED', $7, $8, now())
+     ON CONFLICT (idem_key) DO NOTHING`,
+    [
+      request.chainId,
+      request.projectId,
+      request.account,
+      JSON.stringify(request.payload),
+      JSON.stringify(request.args),
+      request.idemKey,
+      errorCode,
+      errorMessage,
+    ]
+  );
 }

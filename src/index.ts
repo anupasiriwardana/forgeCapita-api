@@ -6,6 +6,7 @@ import { pool } from "./db/pool.js";
 import { logger } from "./logger.js";
 import { initRelay } from "./relay/chains.js";
 import { startRelayWorker } from "./relay/relayWorker.js";
+import { startMilestoneAutoExec } from "./relay/milestoneAutoExec.js";
 import { startReconcileJob } from "./drafts/reconcile.js";
 import { toLoggableError } from "./middlewares/errorHandler.js";
 
@@ -43,6 +44,8 @@ async function boot(): Promise<void> {
   // env enables it and a chain passes its startup checks. Logs the relayer ADDRESS only.
   await initRelay();
   const stopRelay = startRelayWorker();
+  // Only runs with MILESTONE_AUTOMATIC_EXECUTION=true and an enabled relayer chain.
+  const stopAutoExec = startMilestoneAutoExec();
 
   process.on("unhandledRejection", (reason) => {
     logger.fatal({ err: reason }, "Unhandled promise rejection");
@@ -65,7 +68,11 @@ async function boot(): Promise<void> {
 
     server.close((closeErr) => {
       if (closeErr) logger.error({ err: closeErr }, "Error closing HTTP server");
-      Promise.all([stopReconcile ? stopReconcile() : undefined, stopRelay ? stopRelay() : undefined])
+      Promise.all([
+        stopReconcile ? stopReconcile() : undefined,
+        stopRelay ? stopRelay() : undefined,
+        stopAutoExec ? stopAutoExec() : undefined,
+      ])
         .then(() => pool.end())
         .then(() => process.exit(0))
         .catch((err: unknown) => {

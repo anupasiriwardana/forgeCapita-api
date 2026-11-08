@@ -125,6 +125,14 @@ Run `npm run migrate` for migration 010. The API can send claim, stake and vote 
 
 All routes need a session; writes need a same-origin request. Intake simulates the call as the relayer: a revert is never queued and maps to a stable `code` (`SELF_PAY`, `ALREADY_VOTED`, `NO_VOTING_POWER`, `VOTING_ENDED`, `ALREADY_CLAIMED`, `FUNDING_ACTIVE`, `SIMULATION_FAILED`). Other codes: `GAS_TOO_HIGH`, `USER_DAILY_LIMIT`, `CHAIN_DAILY_LIMIT`, `RELAYER_LOW_BALANCE`, `SIGNATURE_MISMATCH`. `202 {id,status}` on accept, `200` on an idempotent repeat. A worker (every 3 s, not under `NODE_ENV=test`) moves requests QUEUED, SENDING, SENT, CONFIRMED (or FAILED/EXPIRED); rows left SENDING without a hash at boot are failed as `INTERRUPTED`.
 
+## Automatic milestone execution
+
+Run `npm run migrate` for migration 011 (adds the `execute` kind and lets that kind have a NULL `user_id`; user kinds still require a user). Off unless `MILESTONE_AUTOMATIC_EXECUTION=true` (any other value or unset = off) AND the relayer has at least one enabled chain; never started under `NODE_ENV=test`. Startup logs `milestone auto-execution enabled` or `disabled`.
+
+Every `MILESTONE_AUTOEXEC_INTERVAL_MS` (default `60000`, 15000 to 3600000) under advisory lock `727361003` the job reads indexed candidates (project `ACTIVE`, current milestone open and unexecuted, indexed voting end at least 15 s in the past, 50 per tick), then re-checks the chain (not cancelled/completed, same milestone index, open, unexecuted, `now >= votingEndTime + 15 s`), simulates `executeMilestone()` as the relayer and queues a system `execute` row (`idem_key execute:<chain>:<escrow>:<index>`, `user_id` NULL, `account` = relayer) that the normal relay worker sends and confirms. It never acts before the voting end: when yes votes exceed half the public supply the developer executes manually. If the vote ended without approval the contract cancels the project and opens refunds (as for any caller).
+
+Simulation outcomes: `Milestones frozen` is retried next tick without a row; `Gas ceiling exceeded` stores one FAILED `SELF_PAY` row and is never retried; other reverts store a FAILED `SIMULATION_FAILED` row and are retried at most `MILESTONE_AUTOEXEC_MAX_ATTEMPTS` times (default 3), at least 1 hour apart (failed or expired execute rows count as attempts). Execute rows are not listed in the user relay endpoints.
+
 ## Probes, versioning and OpenAPI
 
 - `GET /health` is liveness; `GET /ready` returns `200` when the DB is reachable and every migration is applied, else `503 {"success":false,"error":"Not ready"}`. Both are exempt from rate limiting and request logs. Indexer reachability is deferred (the API has no indexer URL; both share the same Neon DB).

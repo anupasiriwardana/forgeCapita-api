@@ -108,6 +108,12 @@ export const envSchema = z
     RELAYER_USER_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(20),
     RELAYER_CHAIN_DAILY_LIMIT: z.coerce.number().int().min(1).max(100_000).default(500),
     RELAYER_CONFIRMATIONS: z.coerce.number().int().min(1).max(64).default(2),
+    // Automatic executeMilestone at the end of a voting period; anything but "true" keeps it off.
+    MILESTONE_AUTOMATIC_EXECUTION: emptyAsUndefined(z.enum(["true", "false"]).optional()).transform(
+      (value) => value === "true"
+    ),
+    MILESTONE_AUTOEXEC_INTERVAL_MS: z.coerce.number().int().min(15_000).max(3_600_000).default(60_000),
+    MILESTONE_AUTOEXEC_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
     AUTH_DOMAIN: z
       .string()
       .trim()
