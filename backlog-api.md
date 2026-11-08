@@ -191,6 +191,7 @@ Item IDs (`API-xx`) are referenced from `ROADMAP.md`. Plan revised 2026-10-28.
 - [ ] **API-120** (added 2026-11-08, optional) Grace period before auto-executing approved or failed milestones.
 - [ ] **API-121** (added 2026-11-08, optional; decision: kept) Skip milestones that would fail the vote instead of cancelling the project. The user accepted cancellation on failed votes.
 - [ ] **API-122** (added 2026-11-08) Admin/staff view of system `execute` requests (hidden from users because user_id is NULL).
+- [ ] **API-123** (added 2026-11-08, from WS-08.5L; frontend FE-100) Public `GET /api/v1/relay/status`: relayer address, per-chain enabled flag and a coarse balance bucket (e.g. ok / low / empty); no secrets, no exact balance required.
 - [ ] **API-79** `relay_log` audit (who, what, signature hash, tx, cost) and admin report; no private data in logs.
 - [ ] **API-80** `[DEFERRED]` Move the relayer key to a managed signer / KMS; key rotation runbook.
 
