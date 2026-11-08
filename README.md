@@ -139,3 +139,25 @@ Simulation outcomes: `Milestones frozen` is retried next tick without a row; `Ga
 - Canonical routes are `/api/v1/projects`. `/api/projects` is a deprecated alias (same handlers, no redirect) to be removed once the frontend moves to `/api/v1`. The Postman collection is stale and still uses `/api/projects`.
 - `GET /api/v1/openapi.json` serves a hand-written OpenAPI 3.0.3 document (`src/openapi.ts`) outside production only; in production it is a normal 404. Deferred: a generated/zod-derived document, an `/api/docs` HTML UI and a drift check.
 - The container has `sh` only: use `docker compose exec api sh`. `ponder_rpc_cache_1` in Neon is Ponder's RPC cache, not the API's.
+
+## Integration tests (real Postgres)
+
+The unit tests (`npm test`) mock `pg`, so they never prove that the SQL runs. `npm run test:integration` runs the real repository and service functions against a throwaway Postgres 16 (files `tests/integration/*.itest.ts`, config `jest.integration.config.cjs`, serial). `npm test` does not run them.
+
+Locally (from the repo root, with the compose project running):
+
+```sh
+docker compose --profile test up -d --wait pg_test
+docker compose exec -T api npm run test:integration
+docker compose --profile test stop pg_test && docker compose --profile test rm -f pg_test
+```
+
+`pg_test` (postgres:16-alpine, test credentials, tmpfs data, compose profile `test`) is never started by default and keeps no data. The `api` container reaches it as `pg_test:5432`; from the host use `INTEGRATION_DATABASE_URL=postgresql://test:test@localhost:5433/forgecapita_test npm run test:integration`. CI runs the same suite against a `postgres:16` service (`.github/workflows/ci.yml`).
+
+Safety guard (`tests/integration/guard.ts`, run in the setup file before any `src` import and again before every DROP): the suite aborts unless the URL host is exactly `pg_test`, `localhost` or `127.0.0.1` AND the database is `forgecapita_test`. The URL comes only from `INTEGRATION_DATABASE_URL` or the built-in default; the real `DATABASE_URL` of the container (`env_file`) is overwritten and never used as a fallback. Only the host name is logged. `guard.itest.ts` proves a Neon-style URL is refused.
+
+Per test file the harness drops and recreates the `app` and `ponder` schemas, applies every migration (twice, the second run must be a no-op), and creates stub `ponder.project` and `ponder.milestone` tables with the generated Ponder column names and types. Between tests every table is truncated; `app.audit_log` rejects TRUNCATE by design, so the reset disables its user triggers inside one transaction (the append-only triggers are tested separately with them enabled). The local test database has no TLS, so the URL carries `sslmode=disable` (it overrides the always-on `ssl` option of `src/db/pool.ts`).
+
+Covered: migrations 001 to 011 (apply, no-op rerun, raw re-execution, tables, triggers, partial indexes); auth (nonces, users, sessions, pruning, expiry, user list); admin role change CTE; audit append-only triggers; founder applications (submit, approve/reject CTEs, self review, role promotion, session revocation); shadow wallets and agreement acceptance; profile upsert CTE with wallet binding and the project read joins against the Ponder stubs; launch drafts (create, attach, cancel, expiry, reconcile apply/conflict, `SKIP LOCKED`, concurrent reconcile); relay queue (idempotent insert, retry rename, quotas, claim ordering, concurrent claim, state transitions, recovery, execute candidates and history).
+
+Not covered: the HTTP layer and middleware (unit tests), the on-chain relayer sender and milestone auto-execution job logic (mocked chains), the real Ponder-generated schema (only the columns the API reads are stubbed; keep them in sync with `forgecapita-indexer/ponder.schema.ts`), Neon-specific behaviour (pooler, TLS) and the `/ready` probe.

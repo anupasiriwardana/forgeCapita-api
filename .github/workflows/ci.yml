@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      # Throwaway database for the integration tests; nothing here is a secret.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: forgecapita_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d forgecapita_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # tsc --noEmit minus the two known TS1295/TS1287 module-format diagnostics.
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:integration
+        env:
+          INTEGRATION_DATABASE_URL: postgresql://test:test@localhost:5432/forgecapita_test
