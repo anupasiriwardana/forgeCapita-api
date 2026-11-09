@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { AppError } from "../errors.js";
 import type { ValidatedRequest } from "../middlewares/validate.js";
 import { RelayError } from "../relay/relayErrors.js";
+import { getRelayStatus } from "../relay/relayStatus.js";
 import type { RelayRecord } from "../relay/relayRepository.js";
 import {
   getOwnRequest,
@@ -104,6 +105,15 @@ export async function getRequest(req: Request, res: Response, next: NextFunction
     const { id } = validatedOf<RelayIdParams>(res, "params");
     const record = await getOwnRequest(id, req.user);
     res.status(200).json({ success: true, data: { request: toDto(record) } } satisfies ApiResponse);
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** Public: coarse relayer health, no auth. */
+export async function getStatus(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    res.status(200).json({ success: true, data: await getRelayStatus() } satisfies ApiResponse);
   } catch (err) {
     next(err);
   }

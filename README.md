@@ -67,6 +67,10 @@ Run `npm run migrate` for migration 005 (`app.audit_log`, append-only: triggers 
 | Endpoint | Access | Purpose |
 |---|---|---|
 | `PATCH /api/v1/admin/users/:address/role` `{role}` | `admin` | Set a role to `founder`, `staff` or `investor`; returns `{user:{id,address,role}}` |
+| `GET /api/v1/admin/audit-log?limit&offset&action&target&actor` | `admin`, `staff` | Paged audit log (read-only) |
+| `GET /api/v1/admin/launch-drafts?limit&offset&status&userId&chainId` | `admin`, `staff` | Paged launch drafts with the owner wallet (name only, never the payload) |
+| `GET /api/v1/admin/relay-requests?limit&offset&kind&status&chainId&system&projectId` | `admin`, `staff` | Paged relay requests (never args or payload) |
+| `GET /api/v1/relay/status` | public | Per-chain relayer health; `balance` is `ok`, `low`, `empty` or `unknown`; cached 30 s |
 | `GET /api/v1/admin/users?limit&offset&role&q` | `admin`, `staff` | Paged user list (`q` is a lowercase hex address prefix); `{items,total,limit,offset}` |
 
 `admin` is never assignable through the API (grant it via `ADMIN_WALLETS`). Admins, `ADMIN_WALLETS` wallets, unknown users and self-changes are rejected (`403`/`404`). A role change updates the user, writes one audit row (actor, target, before/after, IP) and deletes the target's sessions in a single SQL statement, so the new role applies on their next sign-in. Each successful login also deletes expired and idle sessions.

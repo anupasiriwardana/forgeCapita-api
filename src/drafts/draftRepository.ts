@@ -155,3 +155,49 @@ export async function cancelPendingDraft(
   const row = result.rows[0];
   return row ? toDraft(row) : null;
 }
+
+// --- Admin read model ---------------------------------------------------------
+
+export interface AdminDraftFilter {
+  status: DraftStatus | undefined;
+  userId: string | undefined;
+  chainId: number | undefined;
+  limit: number;
+  offset: number;
+}
+
+export interface AdminDraftRecord extends DraftRecord {
+  walletAddress: string;
+}
+
+interface AdminDraftRow extends DraftRow {
+  wallet_address: string;
+}
+
+const ADMIN_DRAFT_FILTER_SQL = `WHERE ($1::text IS NULL OR d.status = $1::text)
+       AND ($2::uuid IS NULL OR d.user_id = $2::uuid)
+       AND ($3::integer IS NULL OR d.chain_id = $3::integer)`;
+
+/** Filtered, paged draft list for staff, joined with the user's wallet. Exposes `payload->>'name'` only. */
+export async function listDraftsForAdmin(
+  filter: AdminDraftFilter
+): Promise<{ items: AdminDraftRecord[]; total: number }> {
+  const filterParams = [filter.status ?? null, filter.userId ?? null, filter.chainId ?? null];
+  const [page, count] = await Promise.all([
+    pool.query<AdminDraftRow>(
+      `SELECT d.id, d.user_id, d.status, d.chain_id, d.founder_wallet_id, d.escrow_address, d.project_id,
+         d.payload->>'name' AS name, d.created_at, d.applied_at, u.wallet_address
+       FROM app.launch_drafts d JOIN app.users u ON u.id = d.user_id ${ADMIN_DRAFT_FILTER_SQL}
+       ORDER BY d.created_at DESC, d.id LIMIT $4 OFFSET $5`,
+      [...filterParams, filter.limit, filter.offset]
+    ),
+    pool.query<{ total: string }>(
+      `SELECT count(*) AS total FROM app.launch_drafts d ${ADMIN_DRAFT_FILTER_SQL}`,
+      filterParams
+    ),
+  ]);
+  return {
+    items: page.rows.map((row) => ({ ...toDraft(row), walletAddress: row.wallet_address })),
+    total: Number(count.rows[0]?.total ?? 0),
+  };
+}

@@ -94,11 +94,12 @@ Item IDs (`API-xx`) are referenced from `ROADMAP.md`. Plan revised 2026-10-28.
 - [~] **API-20** Apply RBAC to every existing and new route per the matrix above; fix `POST /api/projects/profile` so a founder can only modify their own application / project.
   - Partial 2026-11-06: `POST /profile` gated (limiter -> requireSameOrigin -> requireAuth -> ownership: staff/admin any; others 404 if project not indexed, 403 if not developer). Other routes and the RBAC matrix pending.
 - [ ] **API-21** Append-only `audit_log` (actor, role, action, target, before/after summary, IP, user agent, time) written for every privileged action; admin read endpoint with filters.
+  - 2026-11-08 WS-11.2a: read part done (GET /api/v1/admin/audit-log, filters, pagination, ip visible to staff/admin only); remaining: write coverage for every privileged action.
   - Partial 2026-11-06 (WS-06.7w): migration 005 `app.audit_log` with append-only triggers; role changes audited (`role.change`); no user agent column; audit read route NOT built (`listAuditEntries` unused); other privileged actions not yet audited.
 - [ ] **API-22** In-app notifications table + email templates (application changes requested, approved / rejected, KYC result, compliance warning, complaint updates); notification preferences.
 - [x] **API-WS06-a** `loadSession` DB error returns 500 even on public GETs; degrade to anonymous (or fail only on authed routes).
 - [x] **API-WS06-b** No periodic cleanup of expired sessions/nonces (nonces are purged only on issue, sessions on use or per-user prune).
-- [ ] **API-WS06-g** Audit-log read route (admin, filters, pagination) using the existing `listAuditEntries`.
+- [x] **API-WS06-g** Audit-log read route (admin, filters, pagination) using the existing `listAuditEntries`.
 - [ ] **API-WS06-h** Verify migration 005 on real Postgres: CTE casts (uuid/text), `FOR UPDATE` inside the CTE, append-only triggers reject UPDATE/DELETE/TRUNCATE; needs PG >= 11 (`starts_with`/`make_interval`).
 - [ ] **API-WS06-c** Staff/admin `POST /profile` skips the project-indexed check (can write a profile for a non-existent project).
 - [ ] **API-WS06-d** Document auth response shapes: success envelope is `{success, data:{...}}` (openapi/README/postman).
@@ -186,18 +187,19 @@ Item IDs (`API-xx`) are referenced from `ROADMAP.md`. Plan revised 2026-10-28.
 - [ ] **API-77** Relayer balance monitor: alert (email + Risk Center) below a configurable threshold; project-level gas spend view (spent vs 5% budget vs overflow) fed by indexer `SponsoredGas` / `GasDebtRecovered` events (IDX-10).
 - [x] **API-78** Auto-execute: worker watches indexed milestones; when a milestone is executable and not frozen, queue an `execute` request (the contract allows anyone once conditions are met), subject to the same gas policy.
   DONE (WS-08.4L 2026-11-08, scope decided by the user: ONLY at the end of the voting period and only if still not executed; no early fast-track auto-execution, the developer does that manually; env switch MILESTONE_AUTOMATIC_EXECUTION=true, default off). Tracker-verified by code read and api tests 259/259; NOT run on real Postgres, NOT run against a chain. Executing a vote that ended without approval makes the contract cancel the project and open refunds (user accepted).
-- [ ] **API-118** (added 2026-11-08) Auto-execute gating on chain time: use `getBlock('latest').timestamp` via the RelayProvider instead of the server clock (clock skew > 15 s could let a fast-track-approved milestone simulate OK slightly early).
+- [ ] **API-134** (added 2026-11-08; renumbered from a duplicate API-118) Auto-execute gating on chain time: use `getBlock('latest').timestamp` via the RelayProvider instead of the server clock (clock skew > 15 s could let a fast-track-approved milestone simulate OK slightly early).
 - [ ] **API-119** (added 2026-11-08) Unit tests for the auto-exec start conditions: flag off, relayer has no chain (the NODE_ENV=test check comes first today).
 - [ ] **API-120** (added 2026-11-08, optional) Grace period before auto-executing approved or failed milestones.
 - [ ] **API-121** (added 2026-11-08, optional; decision: kept) Skip milestones that would fail the vote instead of cancelling the project. The user accepted cancellation on failed votes.
-- [ ] **API-122** (added 2026-11-08) Admin/staff view of system `execute` requests (hidden from users because user_id is NULL).
-- [ ] **API-123** (added 2026-11-08, from WS-08.5L; frontend FE-100) Public `GET /api/v1/relay/status`: relayer address, per-chain enabled flag and a coarse balance bucket (e.g. ok / low / empty); no secrets, no exact balance required.
+- [x] **API-122** (added 2026-11-08) Admin/staff view of system `execute` requests (hidden from users because user_id is NULL).
+- [x] **API-123** (added 2026-11-08, from WS-08.5L; frontend FE-100) Public `GET /api/v1/relay/status`: relayer address, per-chain enabled flag and a coarse balance bucket (e.g. ok / low / empty); no secrets, no exact balance required.
 - [ ] **API-79** `relay_log` audit (who, what, signature hash, tx, cost) and admin report; no private data in logs.
 - [ ] **API-80** `[DEFERRED]` Move the relayer key to a managed signer / KMS; key rotation runbook.
 
 ## Phase 7: Dashboards (API side)
 
 - [ ] **API-81** Admin / staff: applications queue, KYC queue, complaints queue, Risk Center (cases, rogue launches, compliance, relayer health), analytics (`GET /api/v1/admin/analytics`: raised, fees collected, active audits, flagged projects, sponsored gas), staff list, settings, audit log.
+  - 2026-11-08 WS-11.2a: audit log, launch drafts and relay requests read endpoints done (WS-11.2a); remaining: queues, Risk Center, analytics, staff list, settings.
 - [ ] **API-82** Founder: `GET /api/v1/founder/projects/:id` (round state, milestones, pending creator funds, gas ledger overflow, compliance state), `PATCH` own description / pitch deck / website, revenue report (on-chain deposits vs observed inflow history).
 - [ ] **API-83** Investor: portfolio, dividend / yield history, active votes with weights, relay request history (statuses of queued gasless actions) — wallet taken from the session account, not the URL.
 - [ ] **API-84** Public: project list / detail with transparency panel (API-53); no authentication needed.
@@ -240,6 +242,7 @@ Item IDs (`API-xx`) are referenced from `ROADMAP.md`. Plan revised 2026-10-28.
 - [x] **API-108** (DONE 2026-11-07 WS-07.7, code read of `src/drafts/reconcile.ts` and `src/index.ts`; api tests 211/211 re-run in docker; runtime restart NOT verified) Shutdown race fix: reconcile job tracks the in-flight run and skips a tick while one runs; `startReconcileJob` returns a stop function that awaits the in-flight run; shutdown awaits `stopReconcile()` before `pool.end()` (fixes 'Cannot use a pool after calling end on the pool' at restart).
 - [ ] **API-103** (added 2026-11-06) A reconcile `conflict` state should release the wallet (it already leaves the active set); decide what the founder sees and whether staff can re-apply.
 - [ ] **API-104** (added 2026-11-06) Staff view / cleanup of launch drafts (list by status, force cancel or release).
+  - 2026-11-08 WS-11.2a: read part done (GET /api/v1/admin/launch-drafts); force cancel/release still open (WS-11.2c).
 - [ ] **API-105** (added 2026-11-06) Optional tx-hash attach (verify the factory `ProjectLaunched` event on-chain) so the escrow is not lost if the page dies between tx confirmation and attach (API-99-like).
 - [ ] **API-93** `npm audit` in CI; dependency update policy; pin Node 22 LTS.
 - [ ] **API-94** `[USER-ACTION]` (workflow file `.github/workflows/ci.yml` written 2026-11-08 WS-13.1: typecheck, unit, integration vs postgres:16 service; lint and audit not included; NOT run on GitHub; user must commit, push and check the Actions tab) GitHub Actions CI (lint, typecheck, test, audit) per repo.
@@ -247,3 +250,8 @@ Item IDs (`API-xx`) are referenced from `ROADMAP.md`. Plan revised 2026-10-28.
 - [ ] **API-96** Tooling: `npx tsc --noEmit` fails with TS1295/TS1287 in every src file (41 errors, no other errors; 110 after WS-01.3a = 70 TS1295 + 40 TS1287, tracker re-ran 2026-11-05: migrationRunner.ts 10, migrate.ts 6, index.ts 9, pool.ts 4, projectService.ts 5, env.ts 5, no other code; 91 after the WS-01.2 follow-up (57 TS1295 + 34 TS1287; +2 = one new import in healthController, one new `export` in errorHandler); 89 after WS-01.2 because the new files add them, still no other error kinds, tracker-checked 2026-11-05): tsconfig uses `module: NodeNext` + `verbatimModuleSyntax` but `package.json` has no `"type": "module"`, so files are treated as CommonJS. Predates WS-01.1 (HEAD package.json has no "type", tsconfig unchanged). `tsx` and jest run fine. User decides: add `"type": "module"` (check jest config and `.js` import specifiers) or change tsconfig. Also add `build`/`start`/`typecheck` scripts (needed by API-90).
 - [x] **API-98** (small, docs; DONE 2026-11-05 after verifying the README lines; the migrate commands, sh/bash note and `ponder_rpc_cache_1` note) API README migration commands: the container has no bash, so say `docker compose exec api sh` (then `npm run migrate`) or `docker compose exec -T api npm run migrate`; the status command is `npm run migrate:status` (a user typed `migrate:status` as a bare shell command by mistake). Also note: Neon shows `ponder_rpc_cache_1` next to `public`, `app`, `ponder`; the API never touches it.
 - [x] **API-97** (done 2026-11-05, verified: `dotenv.config({ quiet: true })` in `src/config/env.ts`; startup line not observed live) Logging cleanup: dotenv v18 prints an "injected env (n) from .env" line at startup; silence with `dotenv.config({ quiet: true })` as part of API-05.
+- [ ] **API-129** (added 2026-11-08) openapi.ts entries for GET /admin/audit-log, /admin/launch-drafts, /admin/relay-requests and GET /relay/status.
+- [ ] **API-130** (added 2026-11-08) Staff cancel/release of stuck drafts (audited write, WS-11.2c).
+- [ ] **API-131** (added 2026-11-08) Relay status cache is per process (30 s per chain); revisit if the API is scaled out.
+- [ ] **API-132** (added 2026-11-08) The API repo has no `lint` script (package.json scripts: dev, migrate, migrate:status, typecheck, test, test:integration); decide whether a linter is needed.
+- [ ] **API-133** (added 2026-11-08) Extra admin filters (date ranges) if the screens need them.

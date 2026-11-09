@@ -1,9 +1,18 @@
 import { Router, type RequestHandler } from "express";
 import { requireAuth, requireRole, requireSameOrigin } from "../auth/middleware.js";
-import { getUsers, patchUserRole } from "../controllers/adminController.js";
+import {
+  getAuditLog,
+  getLaunchDrafts,
+  getRelayRequests,
+  getUsers,
+  patchUserRole,
+} from "../controllers/adminController.js";
 import { validate } from "../middlewares/validate.js";
 import {
+  auditLogQuerySchema,
+  launchDraftsQuerySchema,
   listUsersQuerySchema,
+  relayRequestsQuerySchema,
   roleBodySchema,
   roleParamsSchema,
 } from "../schemas/adminSchemas.js";
@@ -23,6 +32,27 @@ export function createAdminRoutes(writeLimiter: RequestHandler): Router {
     requireRole("admin", "staff"),
     validate({ query: listUsersQuerySchema }),
     getUsers
+  );
+  router.get(
+    "/audit-log",
+    requireAuth,
+    requireRole("admin", "staff"),
+    validate({ query: auditLogQuerySchema }),
+    getAuditLog
+  );
+  router.get(
+    "/launch-drafts",
+    requireAuth,
+    requireRole("admin", "staff"),
+    validate({ query: launchDraftsQuerySchema }),
+    getLaunchDrafts
+  );
+  router.get(
+    "/relay-requests",
+    requireAuth,
+    requireRole("admin", "staff"),
+    validate({ query: relayRequestsQuerySchema }),
+    getRelayRequests
   );
   router.patch(
     "/users/:address/role",

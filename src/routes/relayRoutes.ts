@@ -2,6 +2,7 @@ import { Router, type RequestHandler } from "express";
 import { requireAuth, requireSameOrigin } from "../auth/middleware.js";
 import {
   getRequest,
+  getStatus,
   listRequestsHandler,
   postClaim,
   postStake,
@@ -28,6 +29,7 @@ export function createRelayRoutes(writeLimiter: RequestHandler): Router {
   const router = Router();
   router.use(noStore());
 
+  router.get("/status", getStatus);
   router.get("/", requireAuth, validate({ query: relayListQuerySchema }), listRequestsHandler);
   router.get("/:id", requireAuth, validate({ params: relayIdParamsSchema }), getRequest);
   router.post("/claim", writeLimiter, requireSameOrigin, requireAuth, validate({ body: claimBodySchema }), postClaim);

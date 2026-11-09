@@ -101,3 +101,42 @@ export async function listAuditEntries(limit: number, offset: number): Promise<A
     createdAt: row.created_at,
   }));
 }
+
+export interface AuditFilter {
+  action: string | undefined;
+  target: string | undefined;
+  actor: string | undefined;
+  limit: number;
+  offset: number;
+}
+
+const AUDIT_FILTER_SQL = `WHERE ($1::text IS NULL OR action = $1::text)
+       AND ($2::text IS NULL OR target = $2::text)
+       AND ($3::uuid IS NULL OR actor_user_id = $3::uuid)`;
+
+/** Filtered, paged audit read with a total over the same filters. Read-only. */
+export async function listAuditPage(filter: AuditFilter): Promise<{ items: AuditEntry[]; total: number }> {
+  const filterParams = [filter.action ?? null, filter.target ?? null, filter.actor ?? null];
+  const [page, count] = await Promise.all([
+    pool.query<AuditRow>(
+      `SELECT id, actor_user_id, action, target, before_value, after_value, ip, created_at
+       FROM app.audit_log ${AUDIT_FILTER_SQL}
+       ORDER BY created_at DESC, id DESC LIMIT $4 OFFSET $5`,
+      [...filterParams, filter.limit, filter.offset]
+    ),
+    pool.query<{ total: string }>(`SELECT count(*) AS total FROM app.audit_log ${AUDIT_FILTER_SQL}`, filterParams),
+  ]);
+  return {
+    items: page.rows.map((row) => ({
+      id: row.id,
+      actorUserId: row.actor_user_id,
+      action: row.action,
+      target: row.target,
+      beforeValue: row.before_value,
+      afterValue: row.after_value,
+      ip: row.ip,
+      createdAt: row.created_at,
+    })),
+    total: Number(count.rows[0]?.total ?? 0),
+  };
+}

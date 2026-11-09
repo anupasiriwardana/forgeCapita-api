@@ -284,6 +284,62 @@ export async function listSent(chainId: number, limit: number): Promise<SentRela
   return result.rows.map((row) => ({ id: row.id, txHash: row.tx_hash }));
 }
 
+// --- Admin read model ---------------------------------------------------------
+
+export interface AdminRelayFilter {
+  kind: RelayKind | undefined;
+  status: RelayStatus | undefined;
+  chainId: number | undefined;
+  system: boolean;
+  projectId: string | undefined;
+  limit: number;
+  offset: number;
+}
+
+export interface AdminRelayRecord extends RelayRecord {
+  userId: string | null;
+  account: string;
+}
+
+interface AdminRelayRow extends RelayRow {
+  user_id: string | null;
+  account: string;
+}
+
+const ADMIN_RELAY_FILTER_SQL = `WHERE ($1::text IS NULL OR kind = $1::text)
+       AND ($2::text IS NULL OR status = $2::text)
+       AND ($3::integer IS NULL OR chain_id = $3::integer)
+       AND ($4::boolean = false OR user_id IS NULL)
+       AND ($5::text IS NULL OR project_id = $5::text)`;
+
+/** Filtered, paged request list for staff. Never selects `args` or `payload`. */
+export async function listRelayRequestsForAdmin(
+  filter: AdminRelayFilter
+): Promise<{ items: AdminRelayRecord[]; total: number }> {
+  const filterParams = [
+    filter.kind ?? null,
+    filter.status ?? null,
+    filter.chainId ?? null,
+    filter.system,
+    filter.projectId ?? null,
+  ];
+  const [page, count] = await Promise.all([
+    pool.query<AdminRelayRow>(
+      `SELECT ${RECORD_COLUMNS}, user_id, account FROM app.relay_requests ${ADMIN_RELAY_FILTER_SQL}
+       ORDER BY created_at DESC, id LIMIT $6 OFFSET $7`,
+      [...filterParams, filter.limit, filter.offset]
+    ),
+    pool.query<{ total: string }>(
+      `SELECT count(*) AS total FROM app.relay_requests ${ADMIN_RELAY_FILTER_SQL}`,
+      filterParams
+    ),
+  ]);
+  return {
+    items: page.rows.map((row) => ({ ...toRecord(row), userId: row.user_id, account: row.account })),
+    total: Number(count.rows[0]?.total ?? 0),
+  };
+}
+
 // --- Automatic milestone execution -------------------------------------------
 
 export interface ExecuteCandidate {

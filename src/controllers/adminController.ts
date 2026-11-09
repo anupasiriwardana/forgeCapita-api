@@ -1,13 +1,130 @@
 import type { NextFunction, Request, Response } from "express";
 import { changeUserRole } from "../auth/adminService.js";
+import { listAuditPage } from "../auth/auditRepository.js";
 import { listUsers } from "../auth/authRepository.js";
+import { listDraftsForAdmin } from "../drafts/draftRepository.js";
 import { AppError } from "../errors.js";
 import type { ValidatedRequest } from "../middlewares/validate.js";
-import type { ListUsersQuery, RoleBody, RoleParams } from "../schemas/adminSchemas.js";
+import { listRelayRequestsForAdmin } from "../relay/relayRepository.js";
+import type {
+  AuditLogQuery,
+  LaunchDraftsQuery,
+  ListUsersQuery,
+  RelayRequestsQuery,
+  RoleBody,
+  RoleParams,
+} from "../schemas/adminSchemas.js";
 import type { ApiResponse } from "../types/index.js";
 
 function validatedOf<T>(res: Response, key: keyof ValidatedRequest): T {
   return (res.locals["validated"] as ValidatedRequest)[key] as T;
+}
+
+function iso(value: Date | null): string | null {
+  return value ? value.toISOString() : null;
+}
+
+export async function getAuditLog(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { limit, offset, action, target, actor } = validatedOf<AuditLogQuery>(res, "query");
+    const { items, total } = await listAuditPage({ action, target, actor, limit, offset });
+    res.status(200).json({
+      success: true,
+      data: {
+        items: items.map((e) => ({
+          id: e.id,
+          actorUserId: e.actorUserId,
+          action: e.action,
+          target: e.target,
+          before: e.beforeValue,
+          after: e.afterValue,
+          ip: e.ip,
+          createdAt: e.createdAt.toISOString(),
+        })),
+        total,
+        limit,
+        offset,
+      },
+    } satisfies ApiResponse);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getLaunchDrafts(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { limit, offset, status, userId, chainId } = validatedOf<LaunchDraftsQuery>(res, "query");
+    const { items, total } = await listDraftsForAdmin({ status, userId, chainId, limit, offset });
+    res.status(200).json({
+      success: true,
+      data: {
+        items: items.map((d) => ({
+          id: d.id,
+          userId: d.userId,
+          walletAddress: d.walletAddress,
+          status: d.status,
+          chainId: d.chainId,
+          founderWalletId: d.founderWalletId,
+          escrowAddress: d.escrowAddress,
+          projectId: d.projectId,
+          name: d.name,
+          createdAt: d.createdAt.toISOString(),
+          appliedAt: iso(d.appliedAt),
+        })),
+        total,
+        limit,
+        offset,
+      },
+    } satisfies ApiResponse);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getRelayRequests(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { limit, offset, kind, status, chainId, system, projectId } = validatedOf<RelayRequestsQuery>(
+      res,
+      "query"
+    );
+    const { items, total } = await listRelayRequestsForAdmin({
+      kind,
+      status,
+      chainId,
+      system,
+      projectId,
+      limit,
+      offset,
+    });
+    res.status(200).json({
+      success: true,
+      data: {
+        items: items.map((r) => ({
+          id: r.id,
+          kind: r.kind,
+          chainId: r.chainId,
+          projectId: r.projectId,
+          userId: r.userId,
+          account: r.account,
+          status: r.status,
+          errorCode: r.errorCode,
+          errorMessage: r.errorMessage,
+          txHash: r.txHash,
+          gasUsed: r.gasUsed,
+          effectiveGasPrice: r.effectiveGasPrice,
+          createdAt: r.createdAt.toISOString(),
+          sentAt: iso(r.sentAt),
+          confirmedAt: iso(r.confirmedAt),
+          expiresAt: r.expiresAt.toISOString(),
+        })),
+        total,
+        limit,
+        offset,
+      },
+    } satisfies ApiResponse);
+  } catch (err) {
+    next(err);
+  }
 }
 
 export async function patchUserRole(req: Request, res: Response, next: NextFunction): Promise<void> {
