@@ -19,3 +19,10 @@ process.env["MILESTONE_AUTOMATIC_EXECUTION"] = "false";
 delete process.env["RELAYER_PRIVATE_KEY"];
 delete process.env["RPC_URL_421614"];
 delete process.env["RPC_URL_97"];
+// The real env_file may enable the revenue audit; tests must never reach a real explorer.
+// Empty (not delete): dotenv re-reads the env file at import and would restore deleted variables,
+// but never overrides defined ones, and the schema treats empty as unset.
+process.env["ETHERSCAN_API_KEY"] = "";
+process.env["REVENUE_AUDIT_CHAINS"] = "";
+process.env["REVENUE_TOLERANCE_BPS"] = "";
+process.env["REVENUE_AUDIT_ENABLED"] = "false";

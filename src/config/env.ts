@@ -127,6 +127,8 @@ export const envSchema = z
       return [...new Set(ids.map(Number))];
     }),
     EXPLORER_POLL_INTERVAL_MS: z.coerce.number().int().min(60_000).max(3_600_000).default(900_000),
+    // Allowed shortfall (basis points) between explorer-observed inflow and on-chain routed revenue.
+    REVENUE_TOLERANCE_BPS: emptyAsUndefined(z.coerce.number().int().min(0).max(10_000).default(400)),
     EXPLORER_MIN_INTERVAL_MS: z.coerce.number().int().min(0).max(60_000).default(600),
     EXPLORER_BASE_URL: emptyAsUndefined(z.string().url().startsWith("https://").optional()).transform(
       (value) => value ?? "https://api.etherscan.io/v2/api"

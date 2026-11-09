@@ -255,11 +255,12 @@ describe("GET /api/v1/admin/inflows", () => {
       kind: "native",
       tokenAddress: null,
       amount: (10n ** 18n + 4n).toString(),
+      amountFormatted: "1.000000000000000004",
       blockNumber: "1004",
       blockTime: String(1_700_000_004),
     });
     expect(Object.keys(all.body.data.items[0]).sort()).toEqual(
-      ["amount", "blockNumber", "blockTime", "chainId", "firstSeenAt", "fromAddress", "id", "kind", "tokenAddress", "tokenSymbol", "txHash", "walletAddress"]
+      ["amount", "amountFormatted", "blockNumber", "blockTime", "chainId", "firstSeenAt", "fromAddress", "id", "kind", "tokenAddress", "tokenSymbol", "txHash", "walletAddress"]
     );
 
     expect((await get("?chainId=97")).body.data.total).toBe(1);

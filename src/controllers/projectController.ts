@@ -4,6 +4,7 @@ import {
   getProjectById,
   listProjects,
 } from "../services/projectService.js";
+import { getTransparency } from "../audit/complianceService.js";
 import { AppError } from "../errors.js";
 import type { ValidatedRequest } from "../middlewares/validate.js";
 import type {
@@ -61,6 +62,27 @@ export async function getProject(
       success: true,
       data: project,
     } satisfies ApiResponse);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── GET /api/projects/:projectId/transparency ───────────────────────────────
+
+export async function getProjectTransparency(
+  _req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { projectId } = validatedOf(res).params as ProjectIdParams;
+    const transparency = await getTransparency(projectId);
+    if (!transparency) {
+      res.status(404).json({ success: false, error: "Project not found." } satisfies ApiResponse);
+      return;
+    }
+    res.setHeader("Cache-Control", "no-store");
+    res.status(200).json({ success: true, data: transparency } satisfies ApiResponse);
   } catch (err) {
     next(err);
   }

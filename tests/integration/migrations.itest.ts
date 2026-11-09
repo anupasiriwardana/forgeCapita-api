@@ -32,6 +32,7 @@ describe("migrations on an empty database", () => {
       "agreement_acceptances",
       "audit_log",
       "auth_nonces",
+      "compliance_cases",
       "founder_applications",
       "founder_wallets",
       "inflow_cursors",
@@ -57,6 +58,7 @@ describe("migrations on an empty database", () => {
       "founder_wallets_approved_address_idx",
       "relay_requests_idem_key_uidx",
       "founder_applications_open_wallet_idx",
+      "compliance_cases_open_project_uidx",
     ]) {
       expect(names).toContain(expected);
     }

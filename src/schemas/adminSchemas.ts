@@ -97,6 +97,16 @@ export const inflowsQuerySchema = z
   })
   .strict();
 
+export const complianceQuerySchema = z
+  .object({
+    limit: intParam(1, 100, 20),
+    offset: intParam(0, 10000, 0),
+    chainId: CHAIN_ID_PARAM,
+    state: z.enum(["OK", "WARNED", "ESCALATED", "RESOLVED", "SHUTDOWN"]).optional(),
+  })
+  .strict();
+
+export type ComplianceQuery = z.output<typeof complianceQuerySchema>;
 export type InflowsQuery = z.output<typeof inflowsQuerySchema>;
 export type AuditLogQuery = z.output<typeof auditLogQuerySchema>;
 export type LaunchDraftsQuery = z.output<typeof launchDraftsQuerySchema>;

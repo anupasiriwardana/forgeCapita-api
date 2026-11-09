@@ -9,6 +9,7 @@ import { startRelayWorker } from "./relay/relayWorker.js";
 import { startMilestoneAutoExec } from "./relay/milestoneAutoExec.js";
 import { startReconcileJob } from "./drafts/reconcile.js";
 import { startInflowJob } from "./audit/inflowJob.js";
+import { startComplianceJob } from "./audit/complianceJob.js";
 import { toLoggableError } from "./middlewares/errorHandler.js";
 
 const app = createApp();
@@ -49,6 +50,8 @@ async function boot(): Promise<void> {
   const stopAutoExec = startMilestoneAutoExec();
   // Only runs with REVENUE_AUDIT_ENABLED=true and ETHERSCAN_API_KEY set; ingests explorer inflows.
   const stopInflow = startInflowJob();
+  // Same gating; reconciles observed inflow against routed revenue and advances compliance cases.
+  const stopCompliance = startComplianceJob();
 
   process.on("unhandledRejection", (reason) => {
     logger.fatal({ err: reason }, "Unhandled promise rejection");
@@ -76,6 +79,7 @@ async function boot(): Promise<void> {
         stopRelay ? stopRelay() : undefined,
         stopAutoExec ? stopAutoExec() : undefined,
         stopInflow ? stopInflow() : undefined,
+        stopCompliance ? stopCompliance() : undefined,
       ])
         .then(() => pool.end())
         .then(() => process.exit(0))

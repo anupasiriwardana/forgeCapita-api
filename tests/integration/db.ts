@@ -60,6 +60,22 @@ const PONDER_STUBS = `
     gas_debt_recouped    numeric(78),
     is_failed            boolean NOT NULL DEFAULT false,
     failed_at            numeric(78)
+  );
+  CREATE TABLE ponder.revenue_record (
+    id             text PRIMARY KEY,
+    chain_id       integer NOT NULL,
+    router_address text NOT NULL,
+    project_id     text NOT NULL,
+    payer          text NOT NULL,
+    tx_from        text NOT NULL,
+    gross          numeric(78) NOT NULL,
+    creator_cut    numeric(78) NOT NULL,
+    investor_cut   numeric(78) NOT NULL,
+    platform_fee   numeric(78) NOT NULL,
+    routed_to_stakers boolean NOT NULL,
+    block_number   numeric(78) NOT NULL,
+    timestamp      numeric(78) NOT NULL,
+    tx_hash        text NOT NULL
   );`;
 
 /**
@@ -93,7 +109,7 @@ export async function resetData(): Promise<void> {
     await client.query("BEGIN");
     await client.query("ALTER TABLE app.audit_log DISABLE TRIGGER USER");
     await client.query(
-      `TRUNCATE app.audit_log, app.inflow_records, app.inflow_cursors, app.relay_requests, app.launch_drafts, app.startup_profiles,
+      `TRUNCATE app.audit_log, app.compliance_cases, ponder.revenue_record, app.inflow_records, app.inflow_cursors, app.relay_requests, app.launch_drafts, app.startup_profiles,
          app.founder_wallets, app.agreement_acceptances, app.founder_applications,
          app.sessions, app.auth_nonces, app.users, ponder.project, ponder.milestone`
     );

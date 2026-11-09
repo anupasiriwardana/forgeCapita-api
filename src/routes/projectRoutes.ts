@@ -3,6 +3,7 @@ import {
   createOrUpdateProfile,
   getProject,
   getProjects,
+  getProjectTransparency,
 } from "../controllers/projectController.js";
 import { requireAuth, requireSameOrigin } from "../auth/middleware.js";
 import { validate } from "../middlewares/validate.js";
@@ -32,6 +33,13 @@ export function createProjectRoutes(profileLimiter: RequestHandler): Router {
 
   /** GET /api/projects */
   router.get("/", validate({ query: listProjectsQuerySchema }), getProjects);
+
+  /** GET /api/projects/:projectId/transparency (public revenue-audit status) */
+  router.get(
+    "/:projectId/transparency",
+    validate({ params: projectIdParamsSchema }),
+    getProjectTransparency
+  );
 
   /** GET /api/projects/:projectId */
   router.get("/:projectId", validate({ params: projectIdParamsSchema }), getProject);
