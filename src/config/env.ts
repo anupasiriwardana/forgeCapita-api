@@ -114,6 +114,23 @@ export const envSchema = z
     ),
     MILESTONE_AUTOEXEC_INTERVAL_MS: z.coerce.number().int().min(15_000).max(3_600_000).default(60_000),
     MILESTONE_AUTOEXEC_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+    // Revenue audit (inflow ingestion). Only the exact value "true" enables it.
+    REVENUE_AUDIT_ENABLED: emptyAsUndefined(z.string().optional()).transform((value) => value === "true"),
+    // Read only by src/audit/explorerClient.ts; never log or echo it.
+    ETHERSCAN_API_KEY: emptyAsUndefined(z.string().trim().min(1).max(200).optional()),
+    REVENUE_AUDIT_CHAINS: emptyAsUndefined(z.string().optional()).transform((value, ctx): number[] => {
+      const ids = (value ?? "421614").split(",").map((entry) => entry.trim()).filter((entry) => entry !== "");
+      if (ids.length === 0 || !ids.every((id) => id === "421614" || id === "97")) {
+        ctx.addIssue({ code: "custom", message: "invalid" });
+        return z.NEVER;
+      }
+      return [...new Set(ids.map(Number))];
+    }),
+    EXPLORER_POLL_INTERVAL_MS: z.coerce.number().int().min(60_000).max(3_600_000).default(900_000),
+    EXPLORER_MIN_INTERVAL_MS: z.coerce.number().int().min(0).max(60_000).default(600),
+    EXPLORER_BASE_URL: emptyAsUndefined(z.string().url().startsWith("https://").optional()).transform(
+      (value) => value ?? "https://api.etherscan.io/v2/api"
+    ),
     AUTH_DOMAIN: z
       .string()
       .trim()

@@ -2,6 +2,7 @@ import { Router, type RequestHandler } from "express";
 import { requireAuth, requireRole, requireSameOrigin } from "../auth/middleware.js";
 import {
   getAuditLog,
+  getInflows,
   getLaunchDrafts,
   getRelayRequests,
   getUsers,
@@ -10,6 +11,7 @@ import {
 import { validate } from "../middlewares/validate.js";
 import {
   auditLogQuerySchema,
+  inflowsQuerySchema,
   launchDraftsQuerySchema,
   listUsersQuerySchema,
   relayRequestsQuerySchema,
@@ -53,6 +55,13 @@ export function createAdminRoutes(writeLimiter: RequestHandler): Router {
     requireRole("admin", "staff"),
     validate({ query: relayRequestsQuerySchema }),
     getRelayRequests
+  );
+  router.get(
+    "/inflows",
+    requireAuth,
+    requireRole("admin", "staff"),
+    validate({ query: inflowsQuerySchema }),
+    getInflows
   );
   router.patch(
     "/users/:address/role",

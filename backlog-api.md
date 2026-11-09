@@ -150,9 +150,11 @@ Item IDs (`API-xx`) are referenced from `ROADMAP.md`. Plan revised 2026-10-28.
 
 ## Phase 4: Revenue integrity & compliance
 
-- [ ] **API-45** `[USER-ACTION]` Create an Etherscan account and API key (a single Etherscan V2 key is believed to cover BSC as well — verify at build time; otherwise also create a BscScan key). Provide `ETHERSCAN_API_KEY` (and `BSCSCAN_API_KEY` if needed) in `.env`.
+- [ ] **API-45** `[USER-ACTION]` (pending the user's key; not ticked until the user confirms) Create an Etherscan account and API key (a single Etherscan V2 key is believed to cover BSC as well — verify at build time; otherwise also create a BscScan key). Provide `ETHERSCAN_API_KEY` (and `BSCSCAN_API_KEY` if needed) in `.env`.
 - [ ] **API-46** `[USER-ACTION]` Pick a price source (CoinGecko free tier suggested) and provide `PRICE_API_KEY`.
-- [ ] **API-47** Explorer client: rate-limited, retrying, paginated fetch of native transfers and ERC-20 transfers (token-transfer endpoint) into each approved shadow wallet; idempotent storage in `inflow_records` (chain, tx, log index, token, amount, time).
+- [x] **API-47** Explorer client: rate-limited, retrying, paginated fetch of native transfers and ERC-20 transfers (token-transfer endpoint) into each approved shadow wallet; idempotent storage in `inflow_records` (chain, tx, log index, token, amount, time).
+  - Done 2026-11-09 (WS-10.A, awaiting-review): `src/audit/explorerClient.ts`, `inflowRepository.ts`, `inflowJob.ts`, migration 012, staff `GET /api/v1/admin/inflows`. Testnet build counts NATIVE (plus internal/erc20 rows stored) only; USD comparison and the stablecoin allow-list (API-46/48/49) are deferred.
+  - Open: live verification of explorer response shapes (tokentx `logIndex`, txlistinternal `traceId`; derived entry_ref used when absent); free-plan coverage of chains 421614 and 97 is UNCONFIRMED (user tests each chain with their own key); enabled-startup path (setInterval + first tick) not exercised in tests; explorer rate limiter is shared across chains (single spacing); rows dropped as invalid can be double counted when windows overlap; public transparency endpoint (WS-10.B); compliance cases (WS-10.B).
 - [ ] **API-48** `allowed_tokens` per chain (admin-managed): symbol, contract, decimals, USD handling (stablecoins counted at $1, others priced). Mock token on testnets for testing.
 - [ ] **API-49** `price_snapshots` and USD conversion for native coin and allow-listed tokens at transfer time (daily granularity is enough).
 - [ ] **API-50** Reconciliation job: 30-day rolling window per project; observed inflow (USD) vs deposits to `RevenueRouter` (`PaymentReceived`, converted to USD at deposit time). Flag only when deposits are **below** observed inflow by more than the tolerance (default 4%, admin-adjustable setting). Founders convert stablecoins to ETH/BNB before depositing because the router accepts native coin only.
@@ -160,7 +162,7 @@ Item IDs (`API-xx`) are referenced from `ROADMAP.md`. Plan revised 2026-10-28.
 - [ ] **API-52** Freeze coupling: when a case is `ESCALATED`, the admin may freeze milestones (on-chain `freezeMilestones`, signed in the browser). The API tracks freeze state from the indexer and shows it; it never sends the freeze itself.
 - [ ] **API-53** Public transparency endpoint per project: approved shadow wallet (permanent), compliance state, last reconciliation result and date, deposits vs observed totals, freeze flag. No PII.
 - [ ] **API-54** Secret Shopper worker (separate process / container): weekly Playwright crawl of the founder's checkout from the registered product URL; verifies the payment destination matches the registered shadow wallet; stores evidence (screenshots in private storage); mismatch opens a compliance case. SSRF protection: allow only registered public domains, block private / link-local / metadata IP ranges, resolve-and-pin DNS, redirect limits, timeouts, no credentials, isolated network. `[DEFERRED]` until reconciliation (API-50) is stable.
-- [ ] **API-55** Wire the cron jobs (reconciliation, rogue sync, gas sampling) into `src/index.ts` with overlap locks (Postgres advisory locks) so multiple instances do not double-run.
+- [ ] **API-55** (inflow job wired in `src/index.ts` with advisory lock 727361004, WS-10.A; reconciliation, rogue sync and gas sampling still open) Wire the cron jobs (reconciliation, rogue sync, gas sampling) into `src/index.ts` with overlap locks (Postgres advisory locks) so multiple instances do not double-run.
 
 ## Phase 5: Complaints & takeover
 

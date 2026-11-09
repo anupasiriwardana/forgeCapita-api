@@ -137,6 +137,14 @@ Every `MILESTONE_AUTOEXEC_INTERVAL_MS` (default `60000`, 15000 to 3600000) under
 
 Simulation outcomes: `Milestones frozen` is retried next tick without a row; `Gas ceiling exceeded` stores one FAILED `SELF_PAY` row and is never retried; other reverts store a FAILED `SIMULATION_FAILED` row and are retried at most `MILESTONE_AUTOEXEC_MAX_ATTEMPTS` times (default 3), at least 1 hour apart (failed or expired execute rows count as attempts). Execute rows are not listed in the user relay endpoints.
 
+## Revenue audit (inflows)
+
+Run `npm run migrate` for migration 012 (`app.inflow_records`, `app.inflow_cursors`). Off unless `REVENUE_AUDIT_ENABLED=true` (exact value) AND `ETHERSCAN_API_KEY` is set; never started under `NODE_ENV=test`. Startup logs `revenue audit enabled` and `revenue audit chains: <ids>`, or `revenue audit disabled`. The key is never logged or returned.
+
+Every `EXPLORER_POLL_INTERVAL_MS` (default `900000`, 60000 to 3600000) under advisory lock `727361004` the job takes up to 50 approved, bound shadow wallets (`startup_profiles.founder_wallet_id` joined to an `approved` `founder_wallets` row) on the chains in `REVENUE_AUDIT_CHAINS` (`421614`, `97`; default `421614`) and reads, through the Etherscan V2 API (`EXPLORER_BASE_URL`, https only; calls spaced by `EXPLORER_MIN_INTERVAL_MS`, default 600), incoming normal native transfers (`txlist`), contract-sent native transfers (`txlistinternal`) and ERC-20 transfers (`tokentx`). Each kind keeps a cursor with a 20-block reorg margin; rows are stored once (`UNIQUE (chain_id, tx_hash, kind, entry_ref)`), amounts as exact integers. A failing wallet records a short `last_error` and the pass continues. This step only ingests: nothing is compared or flagged yet.
+
+`GET /api/v1/admin/inflows` (staff or admin; query `chainId`, `projectId`, `kind`, `limit` max 100, `offset` max 10000) returns `{items,total,limit,offset}`, plus `cursors` when `projectId` is given.
+
 ## Probes, versioning and OpenAPI
 
 - `GET /health` is liveness; `GET /ready` returns `200` when the DB is reachable and every migration is applied, else `503 {"success":false,"error":"Not ready"}`. Both are exempt from rate limiting and request logs. Indexer reachability is deferred (the API has no indexer URL; both share the same Neon DB).

@@ -84,6 +84,20 @@ export const relayRequestsQuerySchema = z
   })
   .strict();
 
+export const inflowsQuerySchema = z
+  .object({
+    limit: intParam(1, 100, 20),
+    offset: intParam(0, 10000, 0),
+    chainId: CHAIN_ID_PARAM,
+    projectId: z
+      .string()
+      .regex(/^[0-9]+:0x[0-9a-f]{40}$/, "Invalid project id")
+      .optional(),
+    kind: z.enum(["native", "internal", "erc20"]).optional(),
+  })
+  .strict();
+
+export type InflowsQuery = z.output<typeof inflowsQuerySchema>;
 export type AuditLogQuery = z.output<typeof auditLogQuerySchema>;
 export type LaunchDraftsQuery = z.output<typeof launchDraftsQuerySchema>;
 export type RelayRequestsQuery = z.output<typeof relayRequestsQuerySchema>;

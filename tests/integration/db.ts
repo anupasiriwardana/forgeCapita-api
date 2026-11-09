@@ -93,7 +93,7 @@ export async function resetData(): Promise<void> {
     await client.query("BEGIN");
     await client.query("ALTER TABLE app.audit_log DISABLE TRIGGER USER");
     await client.query(
-      `TRUNCATE app.audit_log, app.relay_requests, app.launch_drafts, app.startup_profiles,
+      `TRUNCATE app.audit_log, app.inflow_records, app.inflow_cursors, app.relay_requests, app.launch_drafts, app.startup_profiles,
          app.founder_wallets, app.agreement_acceptances, app.founder_applications,
          app.sessions, app.auth_nonces, app.users, ponder.project, ponder.milestone`
     );

@@ -8,6 +8,7 @@ import { initRelay } from "./relay/chains.js";
 import { startRelayWorker } from "./relay/relayWorker.js";
 import { startMilestoneAutoExec } from "./relay/milestoneAutoExec.js";
 import { startReconcileJob } from "./drafts/reconcile.js";
+import { startInflowJob } from "./audit/inflowJob.js";
 import { toLoggableError } from "./middlewares/errorHandler.js";
 
 const app = createApp();
@@ -46,6 +47,8 @@ async function boot(): Promise<void> {
   const stopRelay = startRelayWorker();
   // Only runs with MILESTONE_AUTOMATIC_EXECUTION=true and an enabled relayer chain.
   const stopAutoExec = startMilestoneAutoExec();
+  // Only runs with REVENUE_AUDIT_ENABLED=true and ETHERSCAN_API_KEY set; ingests explorer inflows.
+  const stopInflow = startInflowJob();
 
   process.on("unhandledRejection", (reason) => {
     logger.fatal({ err: reason }, "Unhandled promise rejection");
@@ -72,6 +75,7 @@ async function boot(): Promise<void> {
         stopReconcile ? stopReconcile() : undefined,
         stopRelay ? stopRelay() : undefined,
         stopAutoExec ? stopAutoExec() : undefined,
+        stopInflow ? stopInflow() : undefined,
       ])
         .then(() => pool.end())
         .then(() => process.exit(0))

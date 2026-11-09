@@ -34,6 +34,8 @@ describe("migrations on an empty database", () => {
       "auth_nonces",
       "founder_applications",
       "founder_wallets",
+      "inflow_cursors",
+      "inflow_records",
       "launch_drafts",
       "relay_requests",
       "schema_migrations",

@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
+import { listCursorsForProject, listInflowsForAdmin } from "../audit/inflowRepository.js";
 import { changeUserRole } from "../auth/adminService.js";
 import { listAuditPage } from "../auth/auditRepository.js";
 import { listUsers } from "../auth/authRepository.js";
@@ -8,6 +9,7 @@ import type { ValidatedRequest } from "../middlewares/validate.js";
 import { listRelayRequestsForAdmin } from "../relay/relayRepository.js";
 import type {
   AuditLogQuery,
+  InflowsQuery,
   LaunchDraftsQuery,
   ListUsersQuery,
   RelayRequestsQuery,
@@ -120,6 +122,33 @@ export async function getRelayRequests(_req: Request, res: Response, next: NextF
         total,
         limit,
         offset,
+      },
+    } satisfies ApiResponse);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getInflows(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { limit, offset, chainId, projectId, kind } = validatedOf<InflowsQuery>(res, "query");
+    const { items, total } = await listInflowsForAdmin({ chainId, projectId, kind, limit, offset });
+    const cursors = projectId === undefined ? undefined : await listCursorsForProject(projectId);
+    res.status(200).json({
+      success: true,
+      data: {
+        items: items.map((r) => ({ ...r, firstSeenAt: r.firstSeenAt.toISOString() })),
+        total,
+        limit,
+        offset,
+        ...(cursors !== undefined && {
+          cursors: cursors.map((c) => ({
+            kind: c.kind,
+            lastBlock: c.lastBlock,
+            lastPolledAt: iso(c.lastPolledAt),
+            lastError: c.lastError,
+          })),
+        }),
       },
     } satisfies ApiResponse);
   } catch (err) {
