@@ -90,6 +90,15 @@ export async function applyCheck(check: CheckResult): Promise<ComplianceState> {
       [check.project.projectId]
     );
     const open = found.rows[0];
+    const shutdown = await client.query(
+      `SELECT 1 FROM app.compliance_cases WHERE project_id = $1 AND state = 'SHUTDOWN' LIMIT 1`,
+      [check.project.projectId]
+    );
+    if (shutdown.rowCount) {
+      // SHUTDOWN is terminal: the job never writes for a shut-down project.
+      await client.query("COMMIT");
+      return "SHUTDOWN";
+    }
     const current: OpenCase | null = open ? { state: open.state, openedAt: open.opened_at } : null;
     const next = nextState(current, check.flagged, check.now);
     const values = [
@@ -215,29 +224,53 @@ export interface ComplianceItem {
 
 const COMPLIANCE_FILTER_SQL = `WHERE ($1::text IS NULL OR state = $1::text) AND ($2::int IS NULL OR chain_id = $2::int)`;
 
+interface CaseRow {
+  id: string;
+  project_id: string;
+  chain_id: number;
+  state: ComplianceState;
+  opened_at: Date;
+  state_changed_at: Date;
+  escalated_at: Date | null;
+  resolved_at: Date | null;
+  resolution_note: string | null;
+  last_checked_at: Date | null;
+  inflow: string | null;
+  routed: string | null;
+  shortfall_bps: number | null;
+  window_start: Date | null;
+  window_end: Date | null;
+}
+
+const CASE_COLUMNS = `id::text AS id, project_id, chain_id, state, opened_at, state_changed_at, escalated_at, resolved_at,
+         resolution_note, last_checked_at, last_inflow_wei::text AS inflow, last_routed_wei::text AS routed,
+         last_shortfall_bps AS shortfall_bps, window_start, window_end`;
+
+function toItem(r: CaseRow): ComplianceItem {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    chainId: r.chain_id,
+    state: r.state,
+    openedAt: r.opened_at,
+    stateChangedAt: r.state_changed_at,
+    escalatedAt: r.escalated_at,
+    resolvedAt: r.resolved_at,
+    resolutionNote: r.resolution_note,
+    lastCheckedAt: r.last_checked_at,
+    inflowWei: r.inflow,
+    routedWei: r.routed,
+    shortfallBps: r.shortfall_bps,
+    windowStart: r.window_start,
+    windowEnd: r.window_end,
+  };
+}
+
 export async function listCasesForAdmin(filter: ComplianceFilter): Promise<{ items: ComplianceItem[]; total: number }> {
   const filterParams = [filter.state ?? null, filter.chainId ?? null];
   const [page, count] = await Promise.all([
-    pool.query<{
-      id: string;
-      project_id: string;
-      chain_id: number;
-      state: ComplianceState;
-      opened_at: Date;
-      state_changed_at: Date;
-      escalated_at: Date | null;
-      resolved_at: Date | null;
-      resolution_note: string | null;
-      last_checked_at: Date | null;
-      inflow: string | null;
-      routed: string | null;
-      shortfall_bps: number | null;
-      window_start: Date | null;
-      window_end: Date | null;
-    }>(
-      `SELECT id::text AS id, project_id, chain_id, state, opened_at, state_changed_at, escalated_at, resolved_at,
-         resolution_note, last_checked_at, last_inflow_wei::text AS inflow, last_routed_wei::text AS routed,
-         last_shortfall_bps AS shortfall_bps, window_start, window_end
+    pool.query<CaseRow>(
+      `SELECT ${CASE_COLUMNS}
        FROM app.compliance_cases ${COMPLIANCE_FILTER_SQL}
        ORDER BY state_changed_at DESC, id DESC LIMIT $3 OFFSET $4`,
       [...filterParams, filter.limit, filter.offset]
@@ -245,23 +278,79 @@ export async function listCasesForAdmin(filter: ComplianceFilter): Promise<{ ite
     pool.query<{ total: string }>(`SELECT count(*) AS total FROM app.compliance_cases ${COMPLIANCE_FILTER_SQL}`, filterParams),
   ]);
   return {
-    items: page.rows.map((r) => ({
-      id: r.id,
-      projectId: r.project_id,
-      chainId: r.chain_id,
-      state: r.state,
-      openedAt: r.opened_at,
-      stateChangedAt: r.state_changed_at,
-      escalatedAt: r.escalated_at,
-      resolvedAt: r.resolved_at,
-      resolutionNote: r.resolution_note,
-      lastCheckedAt: r.last_checked_at,
-      inflowWei: r.inflow,
-      routedWei: r.routed,
-      shortfallBps: r.shortfall_bps,
-      windowStart: r.window_start,
-      windowEnd: r.window_end,
-    })),
+    items: page.rows.map(toItem),
     total: Number(count.rows[0]?.total ?? 0),
   };
+}
+
+// --- staff actions -----------------------------------------------------------
+
+export type ManualCloseKind = "resolve" | "shutdown";
+
+export type ManualCloseResult =
+  | { outcome: "ok"; item: ComplianceItem }
+  | { outcome: "not_found" }
+  | { outcome: "not_eligible" };
+
+const MANUAL_CLOSE = {
+  resolve: { allowed: ["WARNED", "ESCALATED"], next: "RESOLVED", action: "compliance.resolve" },
+  shutdown: { allowed: ["ESCALATED"], next: "SHUTDOWN", action: "compliance.shutdown" },
+} as const;
+
+/**
+ * Staff resolve/shutdown of a project's open case in ONE transaction: row lock, state change and
+ * audit_log row (actor = staff user) commit together. The note is stored but never logged.
+ */
+export async function closeCaseManually(
+  kind: ManualCloseKind,
+  projectId: string,
+  actorUserId: string,
+  note: string,
+  ip: string | null
+): Promise<ManualCloseResult> {
+  const rule = MANUAL_CLOSE[kind];
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const known = await client.query(
+      `SELECT 1 WHERE EXISTS (SELECT 1 FROM app.startup_profiles WHERE project_id = $1)
+              OR EXISTS (SELECT 1 FROM ${qualified("project")} WHERE id = $1)`,
+      [projectId]
+    );
+    if (!known.rowCount) {
+      await client.query("ROLLBACK");
+      return { outcome: "not_found" };
+    }
+    const found = await client.query<{ id: string; state: ComplianceState }>(
+      `SELECT id::text AS id, state FROM app.compliance_cases
+       WHERE project_id = $1 AND state IN ('WARNED', 'ESCALATED') FOR UPDATE`,
+      [projectId]
+    );
+    const open = found.rows[0];
+    if (open === undefined || !(rule.allowed as readonly string[]).includes(open.state)) {
+      await client.query("ROLLBACK");
+      return { outcome: "not_eligible" };
+    }
+    const updated = await client.query<CaseRow>(
+      `UPDATE app.compliance_cases SET state = $2, state_changed_at = now(),
+         resolved_at = CASE WHEN $2 = 'RESOLVED' THEN now() ELSE resolved_at END, resolution_note = $3
+       WHERE id = $1::bigint RETURNING ${CASE_COLUMNS}`,
+      [open.id, rule.next, note]
+    );
+    const escrow = projectId.split(":")[1] ?? "";
+    await client.query(
+      `INSERT INTO app.audit_log (actor_user_id, action, target, before_value, after_value, ip)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [actorUserId, rule.action, escrow, open.state, rule.next, ip]
+    );
+    await client.query("COMMIT");
+    const row = updated.rows[0];
+    if (row === undefined) throw new Error("compliance case update returned no row");
+    return { outcome: "ok", item: toItem(row) };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 }

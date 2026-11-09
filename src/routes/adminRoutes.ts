@@ -8,10 +8,14 @@ import {
   getRelayRequests,
   getUsers,
   patchUserRole,
+  postComplianceResolve,
+  postComplianceShutdown,
 } from "../controllers/adminController.js";
 import { validate } from "../middlewares/validate.js";
 import {
   auditLogQuerySchema,
+  complianceActionBodySchema,
+  complianceActionParamsSchema,
   complianceQuerySchema,
   inflowsQuerySchema,
   launchDraftsQuerySchema,
@@ -80,6 +84,25 @@ export function createAdminRoutes(writeLimiter: RequestHandler): Router {
     requireRole("admin"),
     validate({ params: roleParamsSchema, body: roleBodySchema }),
     patchUserRole
+  );
+
+  router.post(
+    "/compliance/:projectId/resolve",
+    writeLimiter,
+    requireSameOrigin,
+    requireAuth,
+    requireRole("admin", "staff"),
+    validate({ params: complianceActionParamsSchema, body: complianceActionBodySchema }),
+    postComplianceResolve
+  );
+  router.post(
+    "/compliance/:projectId/shutdown",
+    writeLimiter,
+    requireSameOrigin,
+    requireAuth,
+    requireRole("admin", "staff"),
+    validate({ params: complianceActionParamsSchema, body: complianceActionBodySchema }),
+    postComplianceShutdown
   );
 
   return router;

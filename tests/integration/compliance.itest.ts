@@ -276,3 +276,151 @@ describe("GET /api/v1/admin/compliance", () => {
     expect((await get("?state=bogus")).status).toBe(400);
   });
 });
+
+describe("POST /api/v1/admin/compliance/:projectId/(resolve|shutdown)", () => {
+  const ORIGIN = "http://localhost:3000";
+  const NOTE = "reviewed with the founder";
+  let actApp = createApp();
+  beforeEach(() => {
+    actApp = createApp();
+  });
+
+  async function cookieFor(n: number, role: "investor" | "founder" | "staff" | "admin"): Promise<string> {
+    const user = await createUser(n, role);
+    const token = String(n).padStart(43, "c");
+    await createSession(user.id, hashSessionToken(token));
+    return `fc_session=${token}`;
+  }
+
+  async function openCase(n: number, state: string): Promise<CheckableProject> {
+    const { project } = await bindProject(n);
+    await pool.query("INSERT INTO app.compliance_cases (project_id, chain_id, state) VALUES ($1, $2, $3)", [
+      project.projectId,
+      CHAIN,
+      state,
+    ]);
+    return project;
+  }
+
+  function act(
+    kind: "resolve" | "shutdown",
+    projectId: string,
+    body: unknown,
+    cookie: string | null,
+    origin: string | null = ORIGIN
+  ) {
+    let req = request(actApp).post(`/api/v1/admin/compliance/${projectId}/${kind}`);
+    if (origin) req = req.set("Origin", origin);
+    if (cookie) req = req.set("Cookie", cookie);
+    return req.send(body as object);
+  }
+
+  it("rejects missing auth, wrong roles, bad origin and invalid input", async () => {
+    const project = await openCase(1, "ESCALATED");
+    const staff = await cookieFor(100, "staff");
+    expect((await act("resolve", project.projectId, { note: NOTE }, null)).status).toBe(401);
+    expect((await act("resolve", project.projectId, { note: NOTE }, await cookieFor(101, "investor"))).status).toBe(403);
+    expect((await act("shutdown", project.projectId, { note: NOTE }, await cookieFor(102, "founder"))).status).toBe(403);
+    expect((await act("resolve", project.projectId, { note: NOTE }, staff, null)).status).toBe(403);
+    expect((await act("resolve", "nope", { note: NOTE }, staff)).status).toBe(400);
+    expect((await act("resolve", project.projectId, { note: "   " }, staff)).status).toBe(400);
+    expect((await act("resolve", project.projectId, { note: "x".repeat(501) }, staff)).status).toBe(400);
+    expect((await act("resolve", project.projectId, { note: NOTE, extra: 1 }, staff)).status).toBe(400);
+    expect((await cases()).map((c) => c.state)).toEqual(["ESCALATED"]);
+    expect(await auditRows()).toEqual([]);
+  });
+
+  it("staff and admin resolve a WARNED or ESCALATED case with note and one audit row", async () => {
+    const warned = await openCase(1, "WARNED");
+    const staff = await cookieFor(100, "staff");
+    const res = await act("resolve", warned.projectId, { note: `  ${NOTE}  ` }, staff);
+    expect(res.status).toBe(200);
+    expect(res.body.data.case).toMatchObject({ state: "RESOLVED", resolutionNote: NOTE, resolvedAt: expect.any(String) });
+    const staffUser = await pool.query("SELECT id FROM app.users WHERE wallet_address = $1", [addr(100)]);
+    expect(await auditRows()).toEqual([
+      {
+        action: "compliance.resolve",
+        target: warned.escrow,
+        before_value: "WARNED",
+        after_value: "RESOLVED",
+        actor_user_id: staffUser.rows[0].id,
+      },
+    ]);
+
+    const escalated = await openCase(2, "ESCALATED");
+    const admin = await cookieFor(103, "admin");
+    const second = await act("resolve", escalated.projectId, { note: NOTE }, admin);
+    expect(second.status).toBe(200);
+    expect(second.body.data.case.state).toBe("RESOLVED");
+    expect((await auditRows()).map((r) => [r.action, r.before_value, r.after_value])).toEqual([
+      ["compliance.resolve", "WARNED", "RESOLVED"],
+      ["compliance.resolve", "ESCALATED", "RESOLVED"],
+    ]);
+  });
+
+  it("shutdown works from ESCALATED only and is audited", async () => {
+    const warned = await openCase(1, "WARNED");
+    const staff = await cookieFor(100, "staff");
+    expect((await act("shutdown", warned.projectId, { note: NOTE }, staff)).status).toBe(409);
+    expect((await cases()).map((c) => c.state)).toEqual(["WARNED"]);
+    expect(await auditRows()).toEqual([]);
+
+    const escalated = await openCase(2, "ESCALATED");
+    const res = await act("shutdown", escalated.projectId, { note: NOTE }, staff);
+    expect(res.status).toBe(200);
+    expect(res.body.data.case).toMatchObject({ state: "SHUTDOWN", resolvedAt: null, resolutionNote: NOTE });
+    expect((await auditRows()).map((r) => [r.action, r.target, r.before_value, r.after_value])).toEqual([
+      ["compliance.shutdown", escalated.escrow, "ESCALATED", "SHUTDOWN"],
+    ]);
+  });
+
+  it("answers 409 for closed or missing cases and 404 for an unknown project", async () => {
+    const staff = await cookieFor(100, "staff");
+    for (const [n, state] of [[1, "RESOLVED"], [2, "SHUTDOWN"], [3, "OK"]] as const) {
+      const project = await openCase(n, state);
+      expect((await act("resolve", project.projectId, { note: NOTE }, staff)).status).toBe(409);
+      expect((await act("shutdown", project.projectId, { note: NOTE }, staff)).status).toBe(409);
+    }
+    const { project: noCase } = await bindProject(4);
+    expect((await act("resolve", noCase.projectId, { note: NOTE }, staff)).status).toBe(409);
+    expect((await act("resolve", `${CHAIN}:${addr(555)}`, { note: NOTE }, staff)).status).toBe(404);
+    expect(await auditRows()).toEqual([]);
+  });
+
+  it("SHUTDOWN is terminal for the job and public transparency hides the note", async () => {
+    const { project, wallet } = await bindProject(1);
+    await healthy(project);
+    await inflow(CHAIN, wallet, 10_000n);
+    await checkProject(project, TOLERANCE);
+    await pool.query("UPDATE app.compliance_cases SET state = 'ESCALATED'");
+    const staff = await cookieFor(100, "staff");
+    expect((await act("shutdown", project.projectId, { note: "shutdown secret note" }, staff)).status).toBe(200);
+
+    const snapshot = JSON.stringify(await cases());
+    const auditBefore = (await auditRows()).length;
+    await checkProject(project, TOLERANCE);
+    await routed(project, 10_000n);
+    await checkProject(project, TOLERANCE);
+    expect(JSON.stringify(await cases())).toBe(snapshot);
+    expect((await auditRows()).length).toBe(auditBefore);
+
+    const pub = await request(app).get(`/api/v1/projects/${project.projectId}/transparency`);
+    expect(pub.body.data.complianceState).toBe("SHUTDOWN");
+    expect(JSON.stringify(pub.body)).not.toContain("shutdown secret note");
+  });
+
+  it("the job leaves a RESOLVED row intact and opens a new case", async () => {
+    const { project, wallet } = await bindProject(1);
+    await healthy(project);
+    await inflow(CHAIN, wallet, 10_000n);
+    await checkProject(project, TOLERANCE);
+    const staff = await cookieFor(100, "staff");
+    expect((await act("resolve", project.projectId, { note: NOTE }, staff)).status).toBe(200);
+    await checkProject(project, TOLERANCE);
+    const rows = await pool.query("SELECT state, resolution_note FROM app.compliance_cases ORDER BY id");
+    expect(rows.rows).toEqual([
+      { state: "RESOLVED", resolution_note: NOTE },
+      { state: "WARNED", resolution_note: null },
+    ]);
+  });
+});

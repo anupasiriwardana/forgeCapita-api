@@ -19,7 +19,7 @@ const CATEGORY_REGEX = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const COMPOSITE_ID_REGEX = /^([0-9]{1,10}):(0x[a-fA-F0-9]{40})$/;
 
 /** Composite project id `<chainId>:<escrow>`: chain must be allowed; output has the escrow lowercased. */
-const projectIdSchema = z
+export const projectIdSchema = z
   .string()
   .trim()
   .regex(COMPOSITE_ID_REGEX, "Invalid project id")

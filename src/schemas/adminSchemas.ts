@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { projectIdSchema } from "./projectSchemas.js";
 
 const ASSIGNABLE_ROLES = ["founder", "staff", "investor"] as const;
 const LISTABLE_ROLES = ["founder", "staff", "investor", "admin"] as const;
@@ -106,6 +107,12 @@ export const complianceQuerySchema = z
   })
   .strict();
 
+export const complianceActionParamsSchema = z.object({ projectId: projectIdSchema }).strict();
+
+export const complianceActionBodySchema = z.object({ note: z.string().trim().min(1).max(500) }).strict();
+
+export type ComplianceActionParams = z.output<typeof complianceActionParamsSchema>;
+export type ComplianceActionBody = z.output<typeof complianceActionBodySchema>;
 export type ComplianceQuery = z.output<typeof complianceQuerySchema>;
 export type InflowsQuery = z.output<typeof inflowsQuerySchema>;
 export type AuditLogQuery = z.output<typeof auditLogQuerySchema>;

@@ -1,5 +1,10 @@
 import type { NextFunction, Request, Response } from "express";
-import { listCasesForAdmin } from "../audit/complianceRepository.js";
+import {
+  closeCaseManually,
+  listCasesForAdmin,
+  type ComplianceItem,
+  type ManualCloseKind,
+} from "../audit/complianceRepository.js";
 import { listCursorsForProject, listInflowsForAdmin } from "../audit/inflowRepository.js";
 import { changeUserRole } from "../auth/adminService.js";
 import { listAuditPage } from "../auth/auditRepository.js";
@@ -10,6 +15,8 @@ import type { ValidatedRequest } from "../middlewares/validate.js";
 import { listRelayRequestsForAdmin } from "../relay/relayRepository.js";
 import type {
   AuditLogQuery,
+  ComplianceActionBody,
+  ComplianceActionParams,
   ComplianceQuery,
   InflowsQuery,
   LaunchDraftsQuery,
@@ -170,6 +177,47 @@ export async function getInflows(_req: Request, res: Response, next: NextFunctio
   }
 }
 
+function toCaseDto(c: ComplianceItem): Record<string, unknown> {
+  return {
+    id: c.id,
+    projectId: c.projectId,
+    chainId: c.chainId,
+    state: c.state,
+    openedAt: c.openedAt.toISOString(),
+    stateChangedAt: c.stateChangedAt.toISOString(),
+    escalatedAt: iso(c.escalatedAt),
+    resolvedAt: iso(c.resolvedAt),
+    resolutionNote: c.resolutionNote,
+    lastCheckedAt: iso(c.lastCheckedAt),
+    observedNative: c.inflowWei,
+    routedNative: c.routedWei,
+    shortfallBps: c.shortfallBps,
+    windowStart: iso(c.windowStart),
+    windowEnd: iso(c.windowEnd),
+  };
+}
+
+function complianceAction(kind: ManualCloseKind) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user) throw new AppError(401, "Authentication required");
+      const { projectId } = validatedOf<ComplianceActionParams>(res, "params");
+      const { note } = validatedOf<ComplianceActionBody>(res, "body");
+      const result = await closeCaseManually(kind, projectId, req.user.id, note, req.ip ?? null);
+      if (result.outcome === "not_found") throw new AppError(404, "Not found");
+      if (result.outcome === "not_eligible") {
+        throw new AppError(409, "No open compliance case in a state that allows this action");
+      }
+      res.status(200).json({ success: true, data: { case: toCaseDto(result.item) } } satisfies ApiResponse);
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
+export const postComplianceResolve = complianceAction("resolve");
+export const postComplianceShutdown = complianceAction("shutdown");
+
 export async function getCompliance(_req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { limit, offset, state, chainId } = validatedOf<ComplianceQuery>(res, "query");
@@ -177,23 +225,7 @@ export async function getCompliance(_req: Request, res: Response, next: NextFunc
     res.status(200).json({
       success: true,
       data: {
-        items: items.map((c) => ({
-          id: c.id,
-          projectId: c.projectId,
-          chainId: c.chainId,
-          state: c.state,
-          openedAt: c.openedAt.toISOString(),
-          stateChangedAt: c.stateChangedAt.toISOString(),
-          escalatedAt: iso(c.escalatedAt),
-          resolvedAt: iso(c.resolvedAt),
-          resolutionNote: c.resolutionNote,
-          lastCheckedAt: iso(c.lastCheckedAt),
-          observedNative: c.inflowWei,
-          routedNative: c.routedWei,
-          shortfallBps: c.shortfallBps,
-          windowStart: iso(c.windowStart),
-          windowEnd: iso(c.windowEnd),
-        })),
+        items: items.map(toCaseDto),
         total,
         limit,
         offset,
