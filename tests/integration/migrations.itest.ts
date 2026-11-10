@@ -43,6 +43,7 @@ describe("migrations on an empty database", () => {
       "schema_migrations",
       "sessions",
       "startup_profiles",
+      "user_profiles",
       "users",
     ]);
     const triggers = await pool.query<{ tgname: string }>(

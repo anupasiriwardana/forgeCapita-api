@@ -16,6 +16,7 @@ interface SessionJoinRow {
   user_id: string;
   wallet_address: string;
   role: Role;
+  profile_complete: boolean;
   last_seen_at: Date;
   expires_at: Date;
 }
@@ -24,10 +25,11 @@ interface UserRow {
   id: string;
   wallet_address: string;
   role: Role;
+  profile_complete: boolean;
 }
 
 function toUser(row: UserRow): AuthUser {
-  return { id: row.id, address: row.wallet_address, role: row.role };
+  return { id: row.id, address: row.wallet_address, role: row.role, profileComplete: row.profile_complete === true };
 }
 
 export async function deleteExpiredNonces(): Promise<void> {
@@ -67,7 +69,8 @@ export async function upsertUser(address: string, makeAdmin: boolean): Promise<A
      ON CONFLICT (wallet_address) DO UPDATE SET
        last_login_at = now(),
        role = CASE WHEN $2::boolean THEN 'admin' ELSE app.users.role END
-     RETURNING id, wallet_address, role`,
+     RETURNING id, wallet_address, role,
+       EXISTS (SELECT 1 FROM app.user_profiles p WHERE p.user_id = app.users.id) AS profile_complete`,
     [address, makeAdmin]
   );
   const row = result.rows[0];
@@ -103,7 +106,8 @@ export async function pruneSessions(userId: string, keep: number): Promise<void>
 
 export async function findSession(idHash: string): Promise<SessionRecord | null> {
   const result = await pool.query<SessionJoinRow>(
-    `SELECT u.id AS user_id, u.wallet_address, u.role, s.last_seen_at, s.expires_at
+    `SELECT u.id AS user_id, u.wallet_address, u.role, s.last_seen_at, s.expires_at,
+            EXISTS (SELECT 1 FROM app.user_profiles p WHERE p.user_id = u.id) AS profile_complete
      FROM app.sessions s
      JOIN app.users u ON u.id = s.user_id
      WHERE s.id_hash = $1`,
@@ -112,7 +116,12 @@ export async function findSession(idHash: string): Promise<SessionRecord | null>
   const row = result.rows[0];
   if (!row) return null;
   return {
-    user: toUser({ id: row.user_id, wallet_address: row.wallet_address, role: row.role }),
+    user: toUser({
+      id: row.user_id,
+      wallet_address: row.wallet_address,
+      role: row.role,
+      profile_complete: row.profile_complete,
+    }),
     lastSeenAt: row.last_seen_at,
     expiresAt: row.expires_at,
   };

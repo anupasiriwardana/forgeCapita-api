@@ -63,6 +63,8 @@ export interface AuthUser {
   /** Lowercase wallet address. */
   address: string;
   role: Role;
+  /** True once the user saved a personal profile; a flag only, never any profile data. */
+  profileComplete: boolean;
 }
 
 declare global {

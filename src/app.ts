@@ -20,6 +20,7 @@ import { createAuthRoutes } from "./routes/authRoutes.js";
 import { createComplaintRoutes } from "./routes/complaintRoutes.js";
 import { createDraftRoutes } from "./routes/draftRoutes.js";
 import { createRelayRoutes } from "./routes/relayRoutes.js";
+import { createUserProfileRoutes } from "./routes/profileRoutes.js";
 import { createProjectRoutes } from "./routes/projectRoutes.js";
 
 const allowedOrigins: ReadonlySet<string> = new Set(config.CORS_ORIGINS);
@@ -154,6 +155,12 @@ export function createApp(): Express {
     max: config.PROFILE_RATE_LIMIT_MAX,
   });
   app.use("/api/v1/complaints", createComplaintRoutes(complaintLimiter));
+  // ONE limiter instance for the personal profile write route (PII; not the project profile limiter).
+  const userProfileLimiter = createLimiter({
+    windowMs: config.RATE_LIMIT_WINDOW_MS,
+    max: config.PROFILE_RATE_LIMIT_MAX,
+  });
+  app.use("/api/v1/profile", createUserProfileRoutes(userProfileLimiter));
   app.use("/api/v1/agreement", createAgreementRoutes());
   app.use("/api/v1/founders", createFounderRoutes(founderLimiter));
   app.use("/api/v1/admin/shadow-wallets", createAdminShadowWalletRoutes(reviewLimiter));

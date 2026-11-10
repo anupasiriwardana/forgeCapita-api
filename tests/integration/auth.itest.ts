@@ -64,7 +64,7 @@ describe("users and sessions", () => {
     const user = await upsertUser(addr(1), false);
     await insertSession("hash-1", user.id, FUTURE(), "1.2.3.4", "agent");
     const found = await findSession("hash-1");
-    expect(found?.user).toEqual({ id: user.id, address: addr(1), role: "investor" });
+    expect(found?.user).toEqual({ id: user.id, address: addr(1), role: "investor", profileComplete: false });
     expect(found?.expiresAt).toBeInstanceOf(Date);
 
     await pool.query("UPDATE app.sessions SET last_seen_at = now() - interval '1 hour' WHERE id_hash = 'hash-1'");

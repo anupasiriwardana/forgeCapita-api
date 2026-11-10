@@ -15,7 +15,7 @@ export async function changeUserRole(
   targetAddress: string,
   newRole: AssignableRole,
   ip: string | null
-): Promise<AuthUser> {
+): Promise<Omit<AuthUser, "profileComplete">> {
   if (targetAddress === actor.address) throw new AppError(403, "Forbidden");
   if (config.ADMIN_WALLETS.includes(targetAddress)) throw new AppError(403, "Forbidden");
 
