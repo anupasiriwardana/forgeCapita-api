@@ -178,7 +178,19 @@ Item IDs (`API-xx`) are referenced from `ROADMAP.md`. Plan revised 2026-10-28.
 ## Phase 5: Complaints & takeover
 
 - [ ] **API-60** Investor complaints: `complaints` (project, investor, category, body, attachments, status `OPEN / IN_REVIEW / RESOLVED / ESCALATED`, assignee), message thread, rate limits, evidence upload. Staff triage and respond; escalate to admin; investor notifications.
+  - PARTIAL 2026-11-10 (WS-11.1-lean, verified by code read, tests 102/102 integration; runtime NOT verified): migration 014 `app.complaints`, POST /api/v1/complaints, GET /complaints/mine, staff GET /admin/complaints and PATCH /admin/complaints/:id, statuses OPEN/INVESTIGATING/RESOLVED/DISMISSED, https evidence link, dedupe per (user, project, category) among active, 5 per 24h, audit rows complaint.create / complaint.status. Remaining: items below.
+  - 2026-11-10 follow-up: reporter now receives staffNote, updatedAt, resolvedAt (no reporterAddress, no staff identity); verified by code read and integration 102/102 x2; runtime NOT verified.
+- [ ] **API-60h** (added 2026-11-10, low priority) Later migration to fix stale comments in `migrations/014_complaints.sql` and the `staff_note` column COMMENT, which still say the note is staff-only / never returned to the reporter (014 already applied; do not edit it).
+- [ ] **API-60i** (added 2026-11-10, watch item) Possible flaky integration suite: one unidentified suite failed once in dev's first full run, passed on rerun; not reproduced in two tracker runs (102/102). Identify if it recurs.
+- [ ] **API-60a** Complaints: ESCALATED status and assignee.
+- [ ] **API-60b** Complaints: message thread between reporter and staff.
+- [ ] **API-60c** Complaints: evidence upload (currently https link only).
+- [ ] **API-60d** Complaints: investor notifications on status change.
+- [ ] **API-60e** Complaints: anonymised complaint count/status for the founder.
+- [ ] **API-60f** Complaints: on-chain position check before filing (currently any signed-in user).
+- [ ] **API-60g** Complaints: reporter list paging beyond 100 (GET /complaints/mine is capped at 100).
 - [ ] **API-61** Complaint-to-case link: staff can attach a complaint to a compliance case; repeated complaints on a project surface in the Risk Center.
+  - Not started (deferred from WS-11.1-lean, 2026-11-10).
 - [ ] **API-62** Takeover workflow: `takeover_cases` (project, reason, evidence, status), candidate developer (must have an approved founder profile + KYC + agreement), **off-chain signalling vote** using staked balances snapshotted from the indexer at a block, quorum rules, voting window. Admin executes `proposeNewDeveloper` from the browser wallet; the API tracks `developer_change` events (IDX-07) until the new developer accepts. Repo handover (API-37).
 - [ ] **API-63** Emergency shutdown support endpoints (no key on server): list shutdown candidates with evidence summary, record the admin's decision and tx hash, verify on chain via the indexer. The transaction itself is signed by the admin in the frontend.
 

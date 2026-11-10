@@ -17,6 +17,7 @@ import { createAdminRoutes } from "./routes/adminRoutes.js";
 import { createAdminApplicationRoutes, createApplicationRoutes } from "./routes/applicationRoutes.js";
 import { createAdminShadowWalletRoutes, createAgreementRoutes, createFounderRoutes } from "./routes/founderRoutes.js";
 import { createAuthRoutes } from "./routes/authRoutes.js";
+import { createComplaintRoutes } from "./routes/complaintRoutes.js";
 import { createDraftRoutes } from "./routes/draftRoutes.js";
 import { createRelayRoutes } from "./routes/relayRoutes.js";
 import { createProjectRoutes } from "./routes/projectRoutes.js";
@@ -148,6 +149,11 @@ export function createApp(): Express {
     max: config.PROFILE_RATE_LIMIT_MAX,
   });
   app.use("/api/v1/relay", createRelayRoutes(relayLimiter));
+  const complaintLimiter = createLimiter({
+    windowMs: config.RATE_LIMIT_WINDOW_MS,
+    max: config.PROFILE_RATE_LIMIT_MAX,
+  });
+  app.use("/api/v1/complaints", createComplaintRoutes(complaintLimiter));
   app.use("/api/v1/agreement", createAgreementRoutes());
   app.use("/api/v1/founders", createFounderRoutes(founderLimiter));
   app.use("/api/v1/admin/shadow-wallets", createAdminShadowWalletRoutes(reviewLimiter));
