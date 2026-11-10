@@ -27,11 +27,7 @@ USER-ACTION after review/commit (no secrets in chat): 1) `docker compose exec -T
 
 **WS-07.5a done (tracker-verified by reading migration 008, upsertProfile CTE, projectService binding flow, and `docker compose exec -T api npm test` 9 suites 188/188; tsc only TS1295/TS1287; package.json unchanged; NOT run on real Postgres).** A founder holds a pool of staff-approved wallets (one pending at a time); each project binds one approved wallet via `shadowWalletId` (or `shadowWallet`; both => 400), each wallet to at most one project; rebinding a different wallet 409; bind audited as `shadow_wallet.bind`; `GET /founders/me` returns `{agreement, wallets:[...]}`; the wallet is never in public DTOs. Non-staff/admin callers need an approved application + accepted agreement. KNOWN INTERIM BREAK: the existing frontend create-project page saves the profile without a wallet reference, so that save fails (403/400) until WS-07.5l lands; the on-chain launch is unaffected. USER-ACTION after review/commit: `docker compose exec -T api npm run migrate` (expect 001-008), `docker compose exec -T api npm run migrate:status` (0 pending), `docker compose restart api`, GET /ready ok.
 
-## BLOCKED - create-project profile save (until WS-07.5l)
-Why: `POST /projects/profile` now requires `shadowWalletId` and launch-eligibility; the frontend does not send them yet.
-You need to do: nothing now; wait for WS-07.5l (frontend wallet pool, eligibility, create gating).
-How to confirm (no secrets in chat): after WS-07.5l, create a project and see the profile saved.
-Then run: /next-task WS-07.5l
+(BLOCKED section "create-project profile save" REMOVED 2026-11-10 by sync: WS-07.5l shipped the frontend wallet pool and `shadowWalletId`, and the launch-draft flow was user-reported working end to end 2026-11-07; not re-verified by Claude.)
 
 **WS-07.2l done (tracker-verified by reading migration 007, agreement.ts, founderRepository.ts, founderService.ts, founderRoutes.ts, app.ts mounts, and `docker compose exec -T api npm test` 9 suites 178/178; tsc only TS1295/TS1287; package.json and `POST /projects/profile` untouched; NOT run on real Postgres).** Endpoints: `GET /api/v1/agreement`; founder `POST /api/v1/founders/me/agreement` (wallet signature, 10 min window, 409 on replay), `POST .../me/shadow-wallet`, `GET .../me`, `GET .../me/launch-eligibility`; staff/admin `GET /api/v1/admin/shadow-wallets`, `POST .../:id/approve|reject` (pending-only, FOR UPDATE, own wallet 403, audit rows). Agreement text is a DRAFT placeholder. openapi.ts not updated. USER-ACTION after review/commit: `docker compose exec -T api npm run migrate` (expect 001-007), `npm run migrate:status` (0 pending), `docker compose restart api`, GET /ready ok. No UI yet.
 
@@ -51,9 +47,9 @@ Then run: /next-task WS-07.5l
 
 ## 1. Executive Summary
 
-The `forgecapita-api` service provides the off-chain data layer, hybrid SQL joins with Ponder indexer tables, Paymaster gas debt recoupment signatures, and compliance auditing. 
+(Rewritten 2026-11-10 by sync; the Paymaster is gone.) The `forgecapita-api` service provides the off-chain data layer: unified SQL joins with Ponder tables (`/api/v1/projects`), wallet sign-in with server-side sessions and roles (investor, founder, staff, admin), founder applications with staff review and KYC attestation, the Revenue Share Agreement acceptance, a founder shadow wallet pool, launch drafts with a reconcile job, a gasless relayer (claim, vote, stake, plus milestone auto-execution), revenue integrity (explorer inflow ingestion, 30-day reconciliation, compliance cases, public transparency endpoint), complaints, and admin/staff read and write endpoints with an append-only audit log. Migrations 001-014 exist; unit 300/300 and integration 102/102 (real Postgres) were last re-run by the tracker 2026-11-10.
 
-Currently, basic server setup, PostgreSQL pool connections, startup profile upsertion, and unified on-chain/off-chain project retrieval are operational. However, **several critical runtime issues, missing endpoints, and empty stub files prevent the service from supporting the full architecture specified in `about.md`**.
+Still missing (see backlog): email/password accounts, 2FA, manual KYC with uploads, repo provisioning, rogue-deployment sync, Secret Shopper, gas oracle, token allow-list and price snapshots, takeover workflow, OpenAPI coverage beyond projects, founder/investor dashboard endpoints.
 
 ---
 
@@ -95,44 +91,28 @@ Currently, basic server setup, PostgreSQL pool connections, startup profile upse
 - projectService: `qualified()` quotes the schema; `PONDER_SCHEMA` is validated by `^[a-z_][a-z0-9_]{0,62}$` before interpolation; the table argument is a constant. The upsert keeps all 8 data columns; `updated_at` is set by the trigger. `StartupProfileRow` lacks `shadow_wallet`, `kyc_verified`, `updated_at` (cosmetic, 1.3b). The joins still use `p.id = s.project_id` without `chain_id` and may not match v2 indexer ids until WS-01.3b.
 - Tests: 84 pass, 5 suites. migrationRunner tests use a recording fake pool and assert real order (BEGIN, lock, SQL, INSERT, COMMIT), rollback with no INSERT, concurrent skip, read-only verify, plus static checks of the real SQL files; projectService tests assert generated SQL strings and env regex cases. Not vacuous, but they never execute the SQL or regexes on Postgres, so the SQL is verified by reading only.
 
-### B. Missing `status` Column in `startup_profiles`
-- **Status:** **HIGH PRIORITY** ⚠️
-- **Problem:** `src/db/pool.ts` creates `startup_profiles` with `shadow_wallet` and `kyc_verified`, but lacks the `status VARCHAR` column (`'PENDING'`, `'APPROVED'`, `'REJECTED'`, `'ROGUE'`).
-- **Impact:** The architectural decision to enforce **Pre-Launch UI Gating** (Section 3.B of `about.md`) cannot be implemented because there is no column tracking whether an admin has approved a founder's submission.
-- **Remedy Required:** Alter table or update initialization script to include `status VARCHAR NOT NULL DEFAULT 'PENDING'`.
+### B. RESOLVED (removed 2026-11-10 by sync): "missing `status` column on `startup_profiles`"
+- Superseded: approval state lives in `app.founder_applications` (migration 006, status pending/approved/rejected) and is enforced by launch-eligibility on `POST /projects/profile` (WS-07.5a). `src/db/pool.ts` no longer creates tables.
 
-### C. Missing Environment Variables & Configuration
-- **Status:** **CONFIG BLOCKER** ⚠️
-- **Problem:** `.env.example` now lists `DATABASE_URL`, `PORT`, `NODE_ENV` (the treasury key is intentionally never on the server). Still missing for later steps:
-  2. `ETHERSCAN_API_KEY` & `BSCSCAN_API_KEY`: Required by `auditService.ts` to query explorer APIs for fiat/crypto transfers into shadow wallets.
-  3. `JWT_SECRET`: Required for Web3 SIWE session tokens.
-  4. S3/Cloud Storage credentials for logo uploads.
-- **Remedy Required:** Update `.env.example` and populate `.env` with valid keys.
+### C. Configuration (reviewed 2026-11-10 by sync; `.env*` not read)
+- `.env.example` is the reference (grep only: it documents `ETHERSCAN_API_KEY`, revenue audit and relayer settings). Sessions are opaque server-side tokens, so `JWT_SECRET` is not needed. `BSCSCAN_API_KEY` not needed (one Etherscan V2 key; chain 97 needs a paid plan and is not enabled). Still open: S3/storage credentials (API-85, no uploads yet) and a price API key (API-46).
 
 ---
 
 ## 4. Incomplete Workflows & Architectural Gaps
 
-### A. Secret Shopper Audit Service (`src/services/auditService.ts`)
-- `auditService.ts` contains only a skeleton `cron.schedule("0 0 * * 0", ...)` with console logs and commented placeholders.
-- The cron job is **never invoked** in `src/index.ts`.
-- No HTTP client integration with Etherscan/BscScan APIs exists to inspect incoming shadow wallet transactions.
-- No discrepancy calculation comparing shadow wallet receipts against Ponder's indexed `RevenueRouter` deposits.
+### A. Secret Shopper (API-54, deferred)
+- Explorer ingestion and reconciliation now exist (`src/audit/*`, WS-10.A/B/D). `src/services/auditService.ts` is a dead, never-imported `node-cron` skeleton (new backlog item API-145 to delete it). The Secret Shopper crawler itself is not started.
 
 ### C. Logo File Uploading
 - Currently expects a raw URL string in `logo_url`.
 - Needs `multer` integration and cloud storage bucket persistence (AWS S3 or Supabase Storage) to handle direct file uploads.
 
-### D. Authentication & Role-Based Access Control
-- All endpoints are currently unauthenticated.
-- No Sign-In with Ethereum (SIWE) or wallet signature verification is implemented.
-- Founders can overwrite any `project_id` in `POST /api/projects/profile` without verifying ownership.
+### D. Authentication & Role-Based Access Control (corrected 2026-11-10 by sync)
+- Wallet sign-in (nonce + signature), httpOnly session cookies, `requireAuth` / `requireRole` / `requireSameOrigin` exist and are applied to every write route and all `/admin` routes (route files read). Founders can only write their own project's profile (developer match against the indexer; staff/admin any). Open: email/password, 2FA, generic ownership middleware, full RBAC matrix, staff profile write skips the indexed-project check (API-WS06-c).
 
-### E. Dashboard Endpoints (Admin, Founder, Investor)
-- No role-specific aggregation routes exist for:
-  - Admin (reviewing pending applications, KYC verification, rogue contract alerts, emergency shutdown trigger).
-  - Founder (project analytics, Paymaster gas debt status, shadow wallet registration).
-  - Investor (portfolio overview, dividend yield claimed, active voting alerts).
+### E. Dashboard Endpoints (corrected 2026-11-10 by sync)
+- Admin/staff: applications, shadow wallets, users, audit log, launch drafts, relay requests, inflows, compliance, complaints endpoints exist. Missing: KYC queue, Risk Center, analytics, staff list, settings (API-81), founder dashboard endpoint (API-82), investor portfolio endpoint (API-83, frontend reads chain and indexer instead).
 
 ---
 
@@ -151,15 +131,17 @@ The backlog was rewritten to a production-grade plan. Key changes from what this
 
 1. [x] API-01 remove the broken Paymaster mount; API-02 zod env validation (done 2026-11-01; user must check `.env` DATABASE_URL scheme).
 2. [ ] API-03 to API-05 and API-97 done and committed. WS-01.3a (API-06, API-07 first part) done, committed and migration applied 2026-11-05 (user-reported); API-98 README fix (bash vs sh, `npm run migrate:status`) open; WS-01.3b (API-07, API-08 partial) code done 2026-11-05, awaiting review and migration 003; next WS-01.4 (API-09, API-10).
-3. [ ] `[USER-ACTION]` API-16 / API-17: email provider and admin bootstrap, then API-11 to API-22 accounts and roles.
-4. [ ] API-30 to API-40 application, KYC, agreement and repo workflow.
-5. [ ] After contracts v2 are deployed: API-70 to API-80 relayer.
+3. [ ] `[USER-ACTION]` API-16 / API-17: email provider and admin bootstrap, then API-11 to API-22 accounts and roles (lean wallet-first slice DONE: API-11/13/15/17/18/19/20/21 partial).
+4. [ ] API-30 to API-40 application, KYC, agreement and repo workflow (lean slice DONE: applications, agreement, shadow wallet pool, launch eligibility; open: uploads/KYC, repo provisioning, rogue sync, per-chain wallets and history).
+5. [ ] Relayer: core, auto-execute and status DONE (API-70, 72/73/75/76 partial, 78, 123); open: gas oracle (API-71), send-policy worker (API-74), balance monitor (API-77), relay_log (API-79).
+(Sync 2026-11-10: items 1-2 above are historical; see backlog for the current state. Open housekeeping: API-129 openapi entries, API-143 openapi for compliance, API-WS07-i/s, API-109 relay openapi.)
 
 (WS-01.3b BLOCKED section removed 2026-11-05: user confirmed committed, migration 003 applied, 3 applied / 0 pending, /health/db ok, sample requests work; user-reported, not verified by Claude.)
 
 Note: the list response is now `{ items, total, limit, offset }` (was a bare array); the Postman collection in `postman/` still reflects the old shapes (update later).
 
 ## Change log
+2026-11-10  sync api  Ticked API-WS06-h, API-WS06-e, API-WS07-e, -f, -g, -k, -n, -o, -t, -u; notes on API-101 (partial: stub not real Ponder schema), duplicate API-107, API-20, API-21; new API-145 (dead auditService.ts); removed stale BLOCKED section and stale Critical Issues B, C, D, E, A (4.A); rewrote Executive Summary; ROADMAP WS-06.2/06.5/06.7 and WS-07.3/07.5/07.8/07.9 annotated with lean-done vs open (left unticked); API-102 and API-104 dropped decisions untouched  - verified by: code read (routes, projectService, integration test files, auditService) and grep; tests NOT re-run in this sync, counts quoted from the earlier tracker runs; runtime not verified
 2026-11-10  WS-11.2c  REVERTED by user decision (off-chain draft removal does not affect the on-chain project): removed POST /admin/launch-drafts/:id/cancel, cancelDraftAsStaff, cancel schemas and their tests; founder's own cancel untouched; API-104 write part and API-102 staff-release dropped, API-130 dropped  - verified by: main session report (typecheck ok, unit 300/300); not re-run by tracker
 2026-11-10  WS-11.2c  POST /api/v1/admin/launch-drafts/:id/cancel (admin/staff; writeLimiter, same-origin, auth, strict zod params + optional note <=500 never stored). cancelDraftAsStaff: one tx (SELECT FOR UPDATE, status='cancelled', audit 'launch_draft.cancel' with before=prev status), only pending/attached, 404/409 otherwise; frees the founder wallet. API-104 write part and API-102 staff-release part done  - verified by: code read of repository, controller, route; dev reported typecheck ok, unit 303/303, integration adminReads 5/5 on real Postgres (not re-run by tracker); wallet release not asserted by a test; runtime NOT verified
 2026-11-10  WS-11.1-lean follow-up  USER-VERIFIED (user-reported, not verified by Claude: all four test steps work; no code change)
