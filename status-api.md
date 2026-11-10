@@ -160,6 +160,7 @@ The backlog was rewritten to a production-grade plan. Key changes from what this
 Note: the list response is now `{ items, total, limit, offset }` (was a bare array); the Postman collection in `postman/` still reflects the old shapes (update later).
 
 ## Change log
+2026-11-10  WS-11.1-lean follow-up  USER-VERIFIED (user-reported, not verified by Claude: all four test steps work; no code change)
 2026-11-10  WS-11.1-lean follow-up  Reporter now sees the staff note: staffNote on base Complaint, reporter DTO adds staffNote/updatedAt/resolvedAt (still no reporterAddress, no staff identity); admin DTO unchanged; audit rows still never hold body/note; itest asserts privacy for other users  - verified by: code read, typecheck ok, unit 300/300, integration 102/102 run twice by tracker (no flake reproduced); runtime not verified
 2026-11-10  WS-11.1-lean  USER-VERIFIED (user-reported, not verified by Claude): all four test steps work
 2026-11-10  WS-11.1-lean  API-60 partial: migration 014 app.complaints, POST /complaints, GET /complaints/mine (cap 100), staff GET/PATCH /admin/complaints, dedupe, 5 per 24h, audit rows complaint.create / complaint.status (no text); new API-60a..g  - verified by: code read, typecheck ok, unit 300/300, integration 102/102 re-run by tracker; runtime not verified
