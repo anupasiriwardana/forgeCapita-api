@@ -133,6 +133,19 @@ export const envSchema = z
     EXPLORER_BASE_URL: emptyAsUndefined(z.string().url().startsWith("https://").optional()).transform(
       (value) => value ?? "https://api.etherscan.io/v2/api"
     ),
+    // Live minimum funding goal. Only "test" disables enforcement; anything else invalid fails startup.
+    MINIMUM_GOAL_MODE: emptyAsUndefined(z.enum(["test", "live"]).default("live")),
+    MIN_GOAL_FLOOR_WEI_421614: emptyAsUndefined(weiSchema("500000000000000000")),
+    MIN_GOAL_FLOOR_WEI_97: emptyAsUndefined(weiSchema("1000000000000000000")),
+    MIN_GOAL_CEILING_WEI_421614: emptyAsUndefined(z.string().regex(/^\d{1,30}$/).optional()),
+    MIN_GOAL_CEILING_WEI_97: emptyAsUndefined(z.string().regex(/^\d{1,30}$/).optional()),
+    MIN_GOAL_L1_FEE_WEI_421614: emptyAsUndefined(weiSchema("60000000000000")),
+    MIN_GOAL_GAS_UNITS: emptyAsUndefined(z.string().regex(/^[1-9]\d{0,15}$/).default("85020820")),
+    MIN_GOAL_N: emptyAsUndefined(z.coerce.number().int().min(1).max(100_000).default(100)),
+    MIN_GOAL_M: emptyAsUndefined(z.coerce.number().int().min(0).max(1000).default(5)),
+    MIN_GOAL_MARGIN_BPS: emptyAsUndefined(z.coerce.number().int().min(0).max(100_000).default(5000)),
+    GAS_WINDOW_HOURS: emptyAsUndefined(z.coerce.number().int().min(1).max(48).default(24)),
+    GAS_SAMPLE_INTERVAL_MS: emptyAsUndefined(z.coerce.number().int().min(15_000).max(3_600_000).default(300_000)),
     AUTH_DOMAIN: z
       .string()
       .trim()

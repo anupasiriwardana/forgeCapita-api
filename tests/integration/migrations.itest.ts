@@ -36,6 +36,7 @@ describe("migrations on an empty database", () => {
       "compliance_cases",
       "founder_applications",
       "founder_wallets",
+      "gas_samples",
       "inflow_cursors",
       "inflow_records",
       "launch_drafts",

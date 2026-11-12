@@ -19,6 +19,7 @@ import { createAdminShadowWalletRoutes, createAgreementRoutes, createFounderRout
 import { createAuthRoutes } from "./routes/authRoutes.js";
 import { createComplaintRoutes } from "./routes/complaintRoutes.js";
 import { createDraftRoutes } from "./routes/draftRoutes.js";
+import { createGasRoutes } from "./routes/gasRoutes.js";
 import { createRelayRoutes } from "./routes/relayRoutes.js";
 import { createUserProfileRoutes } from "./routes/profileRoutes.js";
 import { createProjectRoutes } from "./routes/projectRoutes.js";
@@ -161,6 +162,7 @@ export function createApp(): Express {
     max: config.PROFILE_RATE_LIMIT_MAX,
   });
   app.use("/api/v1/profile", createUserProfileRoutes(userProfileLimiter));
+  app.use("/api/v1/gas", createGasRoutes(createLimiter({ windowMs: config.RATE_LIMIT_WINDOW_MS, max: config.RATE_LIMIT_MAX })));
   app.use("/api/v1/agreement", createAgreementRoutes());
   app.use("/api/v1/founders", createFounderRoutes(founderLimiter));
   app.use("/api/v1/admin/shadow-wallets", createAdminShadowWalletRoutes(reviewLimiter));

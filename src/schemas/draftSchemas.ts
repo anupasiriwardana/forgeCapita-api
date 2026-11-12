@@ -8,6 +8,12 @@ export const createDraftBodySchema = z
     chainId: z.number().int().refine((value) => ALLOWED_CHAIN_IDS.includes(value), "Unsupported chain"),
     ...profileFieldsShape,
     shadowWalletId: z.string().uuid().optional(),
+    // Declared funding goal in wei: positive decimal string, at most 78 digits, parsed to bigint.
+    fundingGoalWei: z
+      .string()
+      .regex(/^[1-9]\d{0,77}$/, "Must be a positive integer wei amount")
+      .transform((value) => BigInt(value))
+      .optional(),
   })
   .strict();
 
@@ -21,7 +27,7 @@ export const attachDraftBodySchema = z
 export type DraftPayload = Pick<
   z.output<typeof createDraftBodySchema>,
   "name" | "description" | "founderBio" | "logoUrl" | "pitchDeckUrl" | "websiteUrl" | "category"
->;
+> & { fundingGoalWei?: string };
 
 export type CreateDraftBody = z.output<typeof createDraftBodySchema>;
 export type DraftIdParams = z.output<typeof draftIdParamsSchema>;

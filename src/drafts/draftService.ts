@@ -1,5 +1,6 @@
 import { AppError } from "../errors.js";
 import { AGREEMENT_VERSION } from "../founders/agreement.js";
+import { assertGoalMeetsMinimum } from "../gas/minimumGoal.js";
 import { findApprovedWallet, readLaunchChecks } from "../founders/founderRepository.js";
 import { logger } from "../logger.js";
 import { toLoggableError } from "../middlewares/errorHandler.js";
@@ -66,6 +67,7 @@ function payloadOf(body: CreateDraftBody): DraftPayload {
     ...(body.pitchDeckUrl !== undefined && { pitchDeckUrl: body.pitchDeckUrl }),
     ...(body.websiteUrl !== undefined && { websiteUrl: body.websiteUrl }),
     ...(body.category !== undefined && { category: body.category }),
+    ...(body.fundingGoalWei !== undefined && { fundingGoalWei: body.fundingGoalWei.toString() }),
   };
 }
 
@@ -76,6 +78,8 @@ export async function createDraft(
   ip: string | null
 ): Promise<DraftRecord> {
   if (!isStaff(user)) await assertFounderEligible(user);
+  // Before any row or shadow-wallet reservation; staff and admin follow the same rule.
+  await assertGoalMeetsMinimum(body.chainId, body.fundingGoalWei);
   const founderWalletId = await resolveReservedWallet(body.shadowWalletId, user);
   try {
     return await insertDraft({

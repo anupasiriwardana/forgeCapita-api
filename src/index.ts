@@ -10,6 +10,7 @@ import { startMilestoneAutoExec } from "./relay/milestoneAutoExec.js";
 import { startReconcileJob } from "./drafts/reconcile.js";
 import { startInflowJob } from "./audit/inflowJob.js";
 import { startComplianceJob } from "./audit/complianceJob.js";
+import { startGasJob } from "./gas/gasJob.js";
 import { toLoggableError } from "./middlewares/errorHandler.js";
 
 const app = createApp();
@@ -52,6 +53,8 @@ async function boot(): Promise<void> {
   const stopInflow = startInflowJob();
   // Same gating; reconciles observed inflow against routed revenue and advances compliance cases.
   const stopCompliance = startComplianceJob();
+  // Samples gas prices for the live minimum funding goal (every mode; chains without an RPC URL are skipped).
+  const stopGas = startGasJob();
 
   process.on("unhandledRejection", (reason) => {
     logger.fatal({ err: reason }, "Unhandled promise rejection");
@@ -80,6 +83,7 @@ async function boot(): Promise<void> {
         stopAutoExec ? stopAutoExec() : undefined,
         stopInflow ? stopInflow() : undefined,
         stopCompliance ? stopCompliance() : undefined,
+        stopGas ? stopGas() : undefined,
       ])
         .then(() => pool.end())
         .then(() => process.exit(0))

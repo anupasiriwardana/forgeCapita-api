@@ -26,3 +26,5 @@ process.env["ETHERSCAN_API_KEY"] = "";
 process.env["REVENUE_AUDIT_CHAINS"] = "";
 process.env["REVENUE_TOLERANCE_BPS"] = "";
 process.env["REVENUE_AUDIT_ENABLED"] = "false";
+// The real env file may set the minimum-goal mode; tests pin it (assigned, because dotenv restores deleted vars).
+process.env["MINIMUM_GOAL_MODE"] = "test";

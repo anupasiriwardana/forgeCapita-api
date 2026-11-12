@@ -14,7 +14,8 @@ import {
 
 /**
  * Advisory lock registry (one id per background job so overlapping instances never double-run):
- * 727361004 = inflow job (inflowJob.ts), 727361005 = compliance job (this file).
+ * 727361004 = inflow job (inflowJob.ts), 727361005 = compliance job (this file),
+ * 727361006 = gas sampler (gas/gasJob.ts).
  */
 export const COMPLIANCE_LOCK_ID = 727361005;
 
