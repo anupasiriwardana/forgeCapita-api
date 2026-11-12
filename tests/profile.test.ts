@@ -146,3 +146,34 @@ describe("/api/v1/profile/me", () => {
     expect(params).toContain("GB");
   });
 });
+
+describe("GET /api/v1/admin/users/:address/profile", () => {
+  const URL_PATH = `/api/v1/admin/users/${ADDRESS}/profile`;
+
+  it("is 401 signed out and 403 for investor and founder", async () => {
+    expect((await request(app).get(URL_PATH)).status).toBe(401);
+    for (const role of ["investor", "founder"]) {
+      mockSession(mockQuery, role, ADDRESS);
+      expect((await request(app).get(URL_PATH).set("Cookie", SESSION_COOKIE_HEADER)).status).toBe(403);
+    }
+  });
+
+  it("is 404 when the user or profile is absent", async () => {
+    mockSession(mockQuery, "staff", ADDRESS, { rows: [], rowCount: 0 });
+    expect((await request(app).get(URL_PATH).set("Cookie", SESSION_COOKIE_HEADER)).status).toBe(404);
+  });
+
+  it("returns the profile uncached with one audit insert and no values", async () => {
+    const calls = mockSession(mockQuery, "staff", ADDRESS, { rows: [ROW], rowCount: 1 });
+    const res = await request(app).get(URL_PATH).set("Cookie", SESSION_COOKIE_HEADER);
+    expect(res.status).toBe(200);
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(res.body.data.profile).toMatchObject({ firstName: "Ada", dateOfBirth: "1990-05-17" });
+    expect(calls()).toHaveLength(1);
+    const [sql, params] = calls()[0] as [string, unknown[]];
+    expect(sql.match(/INSERT INTO app\.audit_log/g)).toHaveLength(1);
+    expect(sql).toContain("profile.view");
+    expect(sql).not.toContain("before_value");
+    expect(params).not.toContain("Ada");
+  });
+});

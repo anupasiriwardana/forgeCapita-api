@@ -16,14 +16,24 @@ function parseUrl(value: string): URL | null {
   }
 }
 
-const httpsUrl = z
-  .string()
-  .trim()
-  .max(300)
-  .refine((value) => {
-    const url = parseUrl(value);
-    return url !== null && url.protocol === "https:" && url.username === "" && url.password === "";
-  }, "Must be an https URL");
+function httpsUrlWithMax(max: number): z.ZodType<string> {
+  return z
+    .string()
+    .trim()
+    .max(max)
+    .refine((value) => {
+      const url = parseUrl(value);
+      return url !== null && url.protocol === "https:" && url.username === "" && url.password === "";
+    }, "Must be an https URL");
+}
+
+const httpsUrl = httpsUrlWithMax(300);
+
+/** KYC documents link: https only, no credentials, no whitespace (a CHECK mirrors this in the database). */
+const kycDocsUrl = httpsUrlWithMax(500).refine(
+  (value) => /^https:\/\/[^\s/?#@]+([/?#]\S*)?$/.test(value),
+  "Must be an https URL"
+);
 
 const repoUrl = httpsUrl.refine((value) => {
   const url = parseUrl(value);
@@ -36,6 +46,8 @@ export const createApplicationBodySchema = z
     summary: z.string().trim().min(1).max(1000),
     websiteUrl: httpsUrl,
     pitchDeckUrl: httpsUrl,
+    kycDocsUrl,
+    kycNote: z.string().trim().min(1).max(500).optional(),
     repoUrl: repoUrl.optional(),
     contact: z.string().trim().min(1).max(200).optional(),
   })

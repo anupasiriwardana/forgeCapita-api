@@ -10,6 +10,8 @@ export interface ApplicationRecord {
   pitchDeckUrl: string;
   repoUrl: string | null;
   contact: string | null;
+  kycDocsUrl: string | null;
+  kycNote: string | null;
   status: ApplicationStatus;
   reviewNote: string | null;
   reviewedBy: string | null;

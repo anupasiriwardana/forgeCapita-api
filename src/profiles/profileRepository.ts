@@ -1,7 +1,7 @@
 import { pool } from "../db/pool.js";
 import type { ProfileBody } from "../schemas/profileSchemas.js";
 
-/** The owner's own profile; PII, returned to nobody else. */
+/** A user's profile; PII, returned only to its owner and to staff (audited). */
 export interface UserProfile {
   firstName: string;
   lastName: string;
@@ -103,4 +103,32 @@ export async function saveProfile(userId: string, body: ProfileBody, ip: string 
   const row = result.rows[0];
   if (!row) throw new Error("profile upsert returned no row");
   return toProfile(row);
+}
+
+/**
+ * Staff read of a user's profile by wallet, in ONE statement: the 'profile.view' audit row is inserted
+ * only when a profile exists, names the viewed wallet and carries no profile values. Null when the user
+ * or the profile is absent (nothing is audited then).
+ */
+export async function findProfileForStaff(
+  address: string,
+  staffUserId: string,
+  ip: string | null
+): Promise<UserProfile | null> {
+  const result = await pool.query<UserProfileRow>(
+    `WITH found AS (
+       SELECT u.wallet_address, p.*
+       FROM app.users u JOIN app.user_profiles p ON p.user_id = u.id
+       WHERE u.wallet_address = $1::text
+     ),
+     audited AS (
+       INSERT INTO app.audit_log (action, actor_user_id, target, ip)
+       SELECT 'profile.view', $2::uuid, f.wallet_address, $3::text FROM found f
+       RETURNING id
+     )
+     SELECT ${PROFILE_COLUMNS} FROM found`,
+    [address, staffUserId, ip]
+  );
+  const row = result.rows[0];
+  return row ? toProfile(row) : null;
 }

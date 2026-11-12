@@ -25,6 +25,8 @@ interface FakeApp {
   pitch_deck_url: string;
   repo_url: string | null;
   contact: string | null;
+  kyc_docs_url: string | null;
+  kyc_note: string | null;
   status: string;
   review_note: string | null;
   reviewed_by: string | null;
@@ -183,6 +185,8 @@ const mockQuery = jest.fn(async (sql: unknown, params?: unknown) => {
       pitch_deck_url: p[5] as string,
       repo_url: p[6] as string | null,
       contact: p[7] as string | null,
+      kyc_docs_url: p[8] as string | null,
+      kyc_note: p[9] as string | null,
       status: "pending",
       review_note: null,
       reviewed_by: null,
@@ -239,6 +243,8 @@ const VALID_BODY = {
   pitchDeckUrl: "https://acme.example.com/deck.pdf",
   repoUrl: "https://github.com/acme/app",
   contact: "founder@acme.example.com",
+  kycDocsUrl: "https://drive.google.com/drive/folders/1AbC?usp=sharing",
+  kycNote: "Passport and utility bill",
 };
 
 beforeEach(() => {
@@ -313,6 +319,14 @@ describe("validation", () => {
       { ...VALID_BODY, pitchDeckUrl: "javascript:alert(1)" },
       { ...VALID_BODY, repoUrl: "https://bitbucket.org/acme/app" },
       { ...VALID_BODY, extra: true },
+      { ...VALID_BODY, kycDocsUrl: undefined },
+      { ...VALID_BODY, kycDocsUrl: "javascript:alert(1)" },
+      { ...VALID_BODY, kycDocsUrl: "data:text/html,x" },
+      { ...VALID_BODY, kycDocsUrl: "http://drive.google.com/x" },
+      { ...VALID_BODY, kycDocsUrl: "https://u:p@drive.google.com/x" },
+      { ...VALID_BODY, kycDocsUrl: `https://drive.google.com/${"x".repeat(500)}` },
+      { ...VALID_BODY, kycDocsUrl: "https://drive.google.com/a b" },
+      { ...VALID_BODY, kycNote: "x".repeat(501) },
       { ...VALID_BODY, projectName: "x".repeat(81) },
       { ...VALID_BODY, summary: "x".repeat(1001) },
       { ...VALID_BODY, websiteUrl: `https://acme.example.com/${"x".repeat(300)}` },
@@ -324,7 +338,11 @@ describe("validation", () => {
 
 describe("submit and read", () => {
   it("creates a pending application, trims input and returns the latest on /mine", async () => {
-    const { cookie } = await applyAs(applicantWallet);
+    const cookie = await signIn(applicantWallet);
+    const created = await submit(cookie, VALID_BODY);
+    expect(created.status).toBe(201);
+    expect(created.body.data.application).not.toHaveProperty("kycDocsUrl");
+    expect(created.body.data.application).not.toHaveProperty("kycNote");
     expect(apps[0]).toMatchObject({ project_name: "Acme SaaS", status: "pending" });
 
     const mine = await request(app).get("/api/v1/applications/mine").set("Cookie", cookie);
@@ -336,6 +354,8 @@ describe("submit and read", () => {
       status: "pending",
     });
     expect(mine.body.data.application).not.toHaveProperty("reviewedBy");
+    expect(mine.body.data.application).not.toHaveProperty("kycDocsUrl");
+    expect(mine.body.data.application).not.toHaveProperty("kycNote");
 
     const none = await request(app).get("/api/v1/applications/mine").set("Cookie", await signIn(otherWallet));
     expect(none.body.data.application).toBeNull();
@@ -358,8 +378,10 @@ describe("submit and read", () => {
     const list = await request(app).get("/api/v1/admin/applications?status=pending").set("Cookie", adminCookie);
     expect(list.status).toBe(200);
     expect(list.body.data).toMatchObject({ total: 1, limit: 20, offset: 0 });
+    expect(list.body.data.items[0]).toMatchObject({ kycDocsUrl: VALID_BODY.kycDocsUrl, kycNote: VALID_BODY.kycNote });
     const one = await request(app).get(`/api/v1/admin/applications/${id}`).set("Cookie", adminCookie);
     expect(one.body.data.application).toHaveProperty("reviewedBy", null);
+    expect(one.body.data.application).toMatchObject({ kycDocsUrl: VALID_BODY.kycDocsUrl });
     expect((await request(app).get("/api/v1/admin/applications/not-a-uuid").set("Cookie", adminCookie)).status).toBe(400);
     expect((await request(app).get("/api/v1/admin/applications?limit=101").set("Cookie", adminCookie)).status).toBe(400);
   });

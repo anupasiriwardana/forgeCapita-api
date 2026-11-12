@@ -10,6 +10,8 @@ export interface NewApplication {
   pitchDeckUrl: string;
   repoUrl: string | undefined;
   contact: string | undefined;
+  kycDocsUrl: string;
+  kycNote: string | undefined;
 }
 
 interface ApplicationRow {
@@ -22,6 +24,8 @@ interface ApplicationRow {
   pitch_deck_url: string;
   repo_url: string | null;
   contact: string | null;
+  kyc_docs_url: string | null;
+  kyc_note: string | null;
   status: ApplicationStatus;
   review_note: string | null;
   reviewed_by: string | null;
@@ -42,7 +46,7 @@ interface ReviewRow {
 }
 
 const APPLICATION_COLUMNS = `id, user_id, wallet_address, project_name, summary, website_url,
-  pitch_deck_url, repo_url, contact, status, review_note, reviewed_by, reviewed_at,
+  pitch_deck_url, repo_url, contact, kyc_docs_url, kyc_note, status, review_note, reviewed_by, reviewed_at,
   kyc_verified_at, kyc_verified_by, created_at, updated_at`;
 
 function toRecord(row: ApplicationRow): ApplicationRecord {
@@ -56,6 +60,8 @@ function toRecord(row: ApplicationRow): ApplicationRecord {
     pitchDeckUrl: row.pitch_deck_url,
     repoUrl: row.repo_url,
     contact: row.contact,
+    kycDocsUrl: row.kyc_docs_url,
+    kycNote: row.kyc_note,
     status: row.status,
     reviewNote: row.review_note,
     reviewedBy: row.reviewed_by,
@@ -82,8 +88,8 @@ function toOutcome(row: ReviewRow): ReviewOutcome {
 export async function insertApplication(input: NewApplication): Promise<ApplicationRecord> {
   const result = await pool.query<ApplicationRow>(
     `INSERT INTO app.founder_applications
-       (user_id, wallet_address, project_name, summary, website_url, pitch_deck_url, repo_url, contact)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (user_id, wallet_address, project_name, summary, website_url, pitch_deck_url, repo_url, contact, kyc_docs_url, kyc_note)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING ${APPLICATION_COLUMNS}`,
     [
       input.userId,
@@ -94,6 +100,8 @@ export async function insertApplication(input: NewApplication): Promise<Applicat
       input.pitchDeckUrl,
       input.repoUrl ?? null,
       input.contact ?? null,
+      input.kycDocsUrl,
+      input.kycNote ?? null,
     ]
   );
   const row = result.rows[0];

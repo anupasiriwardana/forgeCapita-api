@@ -45,9 +45,16 @@ function toOwnerDto(a: ApplicationRecord): Record<string, unknown> {
   };
 }
 
-/** Shape for staff/admin: the owner shape plus user and reviewer ids. */
+/** Shape for staff/admin: the owner shape plus user and reviewer ids and the staff-only KYC link. */
 function toStaffDto(a: ApplicationRecord): Record<string, unknown> {
-  return { ...toOwnerDto(a), userId: a.userId, reviewedBy: a.reviewedBy, kycVerifiedBy: a.kycVerifiedBy };
+  return {
+    ...toOwnerDto(a),
+    userId: a.userId,
+    reviewedBy: a.reviewedBy,
+    kycVerifiedBy: a.kycVerifiedBy,
+    kycDocsUrl: a.kycDocsUrl,
+    kycNote: a.kycNote,
+  };
 }
 
 export async function postApplication(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -61,6 +68,8 @@ export async function postApplication(req: Request, res: Response, next: NextFun
       pitchDeckUrl: body.pitchDeckUrl,
       repoUrl: body.repoUrl,
       contact: body.contact,
+      kycDocsUrl: body.kycDocsUrl,
+      kycNote: body.kycNote,
     });
     res.status(201).json({ success: true, data: { application: toOwnerDto(application) } } satisfies ApiResponse);
   } catch (err) {

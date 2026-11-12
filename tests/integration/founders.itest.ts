@@ -25,6 +25,8 @@ const fields = {
   pitchDeckUrl: "https://acme.example/deck",
   repoUrl: undefined,
   contact: undefined,
+  kycDocsUrl: "https://drive.google.com/drive/folders/abc",
+  kycNote: undefined,
 };
 
 async function roleOf(user: TestUser): Promise<string | undefined> {
@@ -33,6 +35,14 @@ async function roleOf(user: TestUser): Promise<string | undefined> {
 }
 
 describe("founder applications", () => {
+  it("rejects a malformed KYC documents URL at the database", async () => {
+    const user = await createUser(9);
+    for (const bad of ["http://x.com/a", "https://u:p@x.com/a", "https://x.com/a b"]) {
+      const err = await pgErrorOf(submitApplication(user, { ...fields, kycDocsUrl: bad }));
+      expect(err).toMatchObject({ constraint: "founder_applications_kyc_docs_url_format" });
+    }
+  });
+
   it("submits a pending application and allows only one open application per wallet", async () => {
     const user = await createUser(1);
     const app = await submitApplication(user, fields);

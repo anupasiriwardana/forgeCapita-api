@@ -11,6 +11,7 @@ import {
   postComplianceResolve,
   postComplianceShutdown,
 } from "../controllers/adminController.js";
+import { getUserProfileForStaff } from "../controllers/profileController.js";
 import { getAdminComplaints, patchAdminComplaint } from "../controllers/complaintController.js";
 import { validate } from "../middlewares/validate.js";
 import {
@@ -42,6 +43,13 @@ export function createAdminRoutes(writeLimiter: RequestHandler): Router {
     requireRole("admin", "staff"),
     validate({ query: listUsersQuerySchema }),
     getUsers
+  );
+  router.get(
+    "/users/:address/profile",
+    requireAuth,
+    requireRole("admin", "staff"),
+    validate({ params: roleParamsSchema }),
+    getUserProfileForStaff
   );
   router.get(
     "/audit-log",
