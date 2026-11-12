@@ -158,7 +158,7 @@ Item IDs (`API-xx`) are referenced from `ROADMAP.md`. Plan revised 2026-10-28.
 - [ ] **API-40** Rogue-deployment sync job: compare indexed launches (factory `ProjectLaunched`, launcher address from IDX-08) against approved applications and linked wallets; mark unmatched launches `ROGUE`, open a compliance case and notify staff/admin.
 
 - [x] **API-41** (API part DONE 2026-11-12, step WS-07.13a, awaiting user review; frontend part is FE-53 = WS-07.13b) Live minimum funding goal (CORRECTED 2026-11-12; step WS-07.13a). NOT stored on the founder application: the goal is entered on the launch form (`/projects/create`) and sent when the launch draft is created (`POST /api/v1/drafts`, new field `fundingGoalWei`). Computed live: `minGoal = max(cost*(1+margin)/0.05, per-chain FLOOR)` with `cost = gasPriceUsed*gasUnits(N,M) + sponsoredTxCount*l1Fee` (design section 13), optional ceiling. Env `MINIMUM_GOAL_MODE=test|live` (default `live`, fail-closed): `test` = no minimum, no enforcement; `live` = enforced, draft below minimum rejected 422. Public `GET /api/v1/gas/:chainId/minimum-goal`. Settings are env-config now (admin-settings UI deferred). Known limit: the draft only declares the goal; the on-chain deploy is the founder's own tx, so a mismatch between the declared and deployed goal is not detected (follow-up: compare on attach/reconcile, see API-41a). The minimum cache (60 s) is per process.
-- [ ] **API-41a** Detect a mismatch between the goal declared in the launch draft and the goal the founder actually deploys on chain (compare on attach/reconcile; see comment in `src/gas/minimumGoal.ts`).
+- [ ] **API-41a** (DEFERRED by user 2026-11-12, post-MVP; listed under "Extra features (post-MVP, not required for MVP)" at the end of this file) Detect a mismatch between the goal declared in the launch draft and the goal the founder actually deploys on chain (compare on attach/reconcile; see comment in `src/gas/minimumGoal.ts`).
   - Remaining deferred: admin-adjustable settings UI/table, live Arbitrum L1 fee estimator (constant for now), ceiling UI.
 
 ## Phase 4: Revenue integrity & compliance
@@ -297,3 +297,9 @@ Item IDs (`API-xx`) are referenced from `ROADMAP.md`. Plan revised 2026-10-28.
 - [ ] **API-132** (added 2026-11-08) The API repo has no `lint` script (package.json scripts: dev, migrate, migrate:status, typecheck, test, test:integration); decide whether a linter is needed.
 - [ ] **API-133** (added 2026-11-08) Extra admin filters (date ranges) if the screens need them.
 - [ ] **API-145** (added 2026-11-10 by sync, low) Delete dead `src/services/auditService.ts`: a never-imported `node-cron` skeleton (weekly console stub) superseded by `src/audit/*` (inflow and compliance jobs); then drop `node-cron` from package.json if nothing else uses it.
+
+## Extra features (post-MVP, not required for MVP)
+
+Items the user explicitly deferred. They keep their IDs and text; do not select them for a step unless the user asks.
+
+- [ ] **API-41a** (deferred by user 2026-11-12, post-MVP) Detect a mismatch between the goal declared in the launch draft and the goal the founder actually deploys on chain (compare on attach/reconcile; see comment in `src/gas/minimumGoal.ts`). (Canonical entry is in Phase 3 above; this is a pointer.)
