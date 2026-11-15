@@ -32,7 +32,7 @@ export const rejectShadowWalletBodySchema = z
   .object({ note: z.string().trim().min(1).max(500) })
   .strict();
 
-function intParam(min: number, max: number, fallback: number): z.ZodType<number> {
+export function intParam(min: number, max: number, fallback: number): z.ZodType<number> {
   return z
     .string()
     .regex(/^[0-9]{1,6}$/, "Must be an integer")

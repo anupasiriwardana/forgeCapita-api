@@ -6,6 +6,10 @@ process.env["CORS_ORIGINS"] = "http://localhost:3000,https://app.example.com";
 process.env["LOG_LEVEL"] = "silent";
 // Pinned so the real env file cannot change draft-creation tests; the live-mode tests override it.
 process.env["MINIMUM_GOAL_MODE"] = "test";
+// Assigned empty (not deleted) so the real env file can never enable GitHub provisioning in tests.
+for (const name of ["GITHUB_APP_ID", "GITHUB_APP_INSTALLATION_ID", "GITHUB_APP_PRIVATE_KEY_BASE64", "GITHUB_ORG", "REPO_BRANCH_PROTECTION"]) {
+  process.env[name] = "";
+}
 // High limits so unrelated tests never trip the limiters; rate-limit tests override these.
 process.env["RATE_LIMIT_MAX"] = "100000";
 process.env["PROFILE_RATE_LIMIT_MAX"] = "100000";

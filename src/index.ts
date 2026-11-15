@@ -11,6 +11,7 @@ import { startReconcileJob } from "./drafts/reconcile.js";
 import { startInflowJob } from "./audit/inflowJob.js";
 import { startComplianceJob } from "./audit/complianceJob.js";
 import { startGasJob } from "./gas/gasJob.js";
+import { logGithubProvisioning } from "./repos/repoProviderRegistry.js";
 import { toLoggableError } from "./middlewares/errorHandler.js";
 
 const app = createApp();
@@ -40,6 +41,8 @@ async function boot(): Promise<void> {
   // avoid sporadic 502s on reused connections. headersTimeout must exceed it.
   server.keepAliveTimeout = 65_000;
   server.headersTimeout = 66_000;
+
+  logGithubProvisioning();
 
   const stopReconcile = startReconcileJob();
 

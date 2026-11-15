@@ -10,6 +10,8 @@ import {
   postRejectWallet,
   postShadowWallet,
 } from "../controllers/founderController.js";
+import { getOwnRepo, postOwnRepo } from "../controllers/repoController.js";
+import { provisionRepoBodySchema } from "../schemas/repoSchemas.js";
 import { validate } from "../middlewares/validate.js";
 import {
   acceptAgreementBodySchema,
@@ -58,6 +60,16 @@ export function createFounderRoutes(writeLimiter: RequestHandler): Router {
     validate({ body: shadowWalletBodySchema }),
     postShadowWallet
   );
+  router.post(
+    "/me/repo",
+    writeLimiter,
+    requireSameOrigin,
+    requireAuth,
+    requireRole("founder"),
+    validate({ body: provisionRepoBodySchema }),
+    postOwnRepo
+  );
+  router.get("/me/repo", requireAuth, requireRole("founder"), getOwnRepo);
   router.get("/me", requireAuth, requireRole("founder"), getMe);
   router.get("/me/launch-eligibility", requireAuth, getLaunchEligibility);
 

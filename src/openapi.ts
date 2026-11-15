@@ -31,6 +31,24 @@ const projectIdParam = {
   schema: { type: "string", pattern: "^[0-9]{1,10}:0x[a-fA-F0-9]{40}$" },
 };
 
+const repoDto = {
+  type: "object",
+  properties: {
+    fullName: { type: "string" },
+    htmlUrl: { type: "string" },
+    founderLogin: { type: "string" },
+    status: { type: "string", enum: ["invited", "active", "failed"] },
+    createdAt: { type: "string", format: "date-time" },
+  },
+};
+
+const repoOk = (description: string): object => ({
+  description,
+  content: {
+    "application/json": { schema: okEnvelope({ type: "object", properties: { repo: repoDto } }) },
+  },
+});
+
 const statusOk = (description: string): object => ({
   description,
   content: {
@@ -130,6 +148,69 @@ export const openApiDocument = {
           "403": errorResponse("Not the project developer"),
           "404": errorResponse("Project not indexed"),
           "429": errorResponse("Too many requests"),
+        },
+      },
+    },
+    "/api/v1/founders/me/repo": {
+      post: {
+        summary: "Provision a private GitHub repo and invite the founder with push access (session cookie, founder)",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["githubUsername", "projectName"],
+                additionalProperties: false,
+                properties: {
+                  githubUsername: { type: "string", pattern: "^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$" },
+                  projectName: { type: "string", minLength: 3, maxLength: 60 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": repoOk("Existing repo returned, or a failed invite was retried"),
+          "201": repoOk("Repo created"),
+          "400": errorResponse("Validation failed"),
+          "401": errorResponse("Authentication required"),
+          "403": errorResponse("Not a founder"),
+          "409": errorResponse("A repo request exists for a different GitHub user"),
+          "422": errorResponse("GitHub user not found or cannot be invited"),
+          "429": errorResponse("Too many requests"),
+          "502": errorResponse("Repository provider failed"),
+          "503": errorResponse("Provisioning not configured or provider rate limited"),
+        },
+      },
+      get: {
+        summary: "Own provisioned repo (session cookie, founder)",
+        responses: {
+          "200": repoOk("The repo"),
+          "401": errorResponse("Authentication required"),
+          "403": errorResponse("Not a founder"),
+          "404": errorResponse("No repo yet"),
+        },
+      },
+    },
+    "/api/v1/admin/repos": {
+      get: {
+        summary: "List provisioned repos (staff or admin); items add userId, founderWallet and projectId",
+        parameters: [
+          query("userId", { type: "string", format: "uuid" }),
+          query("limit", { type: "integer", minimum: 1, maximum: 100, default: 20 }),
+          query("offset", { type: "integer", minimum: 0, maximum: 10000, default: 0 }),
+        ],
+        responses: {
+          "200": {
+            description: "Page of repos",
+            content: {
+              "application/json": { schema: okEnvelope({ type: "object", additionalProperties: true }) },
+            },
+          },
+          "400": errorResponse("Validation failed"),
+          "401": errorResponse("Authentication required"),
+          "403": errorResponse("Forbidden"),
         },
       },
     },

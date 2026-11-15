@@ -46,6 +46,15 @@ export function parseAdminWallets(raw: string): string[] | null {
   return entries.map((entry) => entry.toLowerCase());
 }
 
+export const GITHUB_LOGIN_PATTERN = /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/;
+
+const GITHUB_VARS = ["GITHUB_APP_ID", "GITHUB_APP_INSTALLATION_ID", "GITHUB_APP_PRIVATE_KEY_BASE64", "GITHUB_ORG"] as const;
+
+/** Names (never values) of the GitHub provisioning variables that are not set. */
+export function missingGithubVars(value: Partial<Record<(typeof GITHUB_VARS)[number], string | undefined>>): string[] {
+  return GITHUB_VARS.filter((name) => value[name] === undefined);
+}
+
 /** Treats an empty variable (KEY=) as unset. */
 function emptyAsUndefined<T extends z.ZodType>(schema: T) {
   return z.preprocess((value) => (value === "" ? undefined : value), schema);
@@ -146,6 +155,16 @@ export const envSchema = z
     MIN_GOAL_MARGIN_BPS: emptyAsUndefined(z.coerce.number().int().min(0).max(100_000).default(5000)),
     GAS_WINDOW_HOURS: emptyAsUndefined(z.coerce.number().int().min(1).max(48).default(24)),
     GAS_SAMPLE_INTERVAL_MS: emptyAsUndefined(z.coerce.number().int().min(15_000).max(3_600_000).default(300_000)),
+    // GitHub repository provisioning (GitHub App). All four must be set to enable it; empty = unset.
+    GITHUB_APP_ID: emptyAsUndefined(z.string().regex(/^[1-9][0-9]{0,15}$/, "must be a positive integer").optional()),
+    GITHUB_APP_INSTALLATION_ID: emptyAsUndefined(z.string().regex(/^[1-9][0-9]{0,15}$/, "must be a positive integer").optional()),
+    // Base64 of the App private key PEM. Decoded in memory by src/repos/githubProvider.ts only; never log or echo it.
+    GITHUB_APP_PRIVATE_KEY_BASE64: emptyAsUndefined(
+      z.string().trim().regex(/^[A-Za-z0-9+/]+={0,2}$/, "must be base64").min(100).max(16_000).optional()
+    ),
+    GITHUB_ORG: emptyAsUndefined(z.string().regex(GITHUB_LOGIN_PATTERN, "must be a GitHub login").optional()),
+    // Branch protection on the default branch of new repos; only the exact value "true" enables it.
+    REPO_BRANCH_PROTECTION: emptyAsUndefined(z.enum(["true", "false"]).optional()).transform((value) => value === "true"),
     AUTH_DOMAIN: z
       .string()
       .trim()
@@ -179,6 +198,8 @@ export const envSchema = z
       ...value,
       CORS_ORIGINS: origins,
       ADMIN_WALLETS: adminWallets,
+      githubMissing: missingGithubVars(value),
+      githubConfigured: missingGithubVars(value).length === 0,
       AUTH_DOMAIN: value.AUTH_DOMAIN ?? new URL(primaryOrigin).host,
     };
   });

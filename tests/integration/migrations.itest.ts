@@ -40,6 +40,7 @@ describe("migrations on an empty database", () => {
       "inflow_cursors",
       "inflow_records",
       "launch_drafts",
+      "project_repos",
       "relay_requests",
       "schema_migrations",
       "sessions",
@@ -63,6 +64,7 @@ describe("migrations on an empty database", () => {
       "founder_applications_open_wallet_idx",
       "compliance_cases_open_project_uidx",
       "complaints_active_uidx",
+      "project_repos_unlinked_user_uidx",
     ]) {
       expect(names).toContain(expected);
     }
