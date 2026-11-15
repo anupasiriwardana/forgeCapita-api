@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "@jest/globals";
+import { insertRepo } from "../../src/repos/repoRepository.js";
 import { approveApplication, findApplicationById, listApplications, rejectApplication } from "../../src/applications/applicationRepository.js";
 import { approve, reject, submitApplication } from "../../src/applications/applicationService.js";
 import {
@@ -208,6 +209,7 @@ describe("shadow wallets", () => {
       applicationApproved: false,
       agreementAccepted: false,
       shadowWalletAvailable: false,
+      repoProvisioned: false,
     });
     const app = await submitApplication(founder, fields);
     await approveApplication(app.id, staff.id, null, null);
@@ -221,6 +223,30 @@ describe("shadow wallets", () => {
       applicationApproved: true,
       agreementAccepted: true,
       shadowWalletAvailable: true,
+      repoProvisioned: false,
     });
+  });
+
+  it("readLaunchChecks counts only an unlinked invited or active repo as provisioned", async () => {
+    const founder = await createUser(3);
+    const id = await insertRepo(pool, {
+      userId: founder.id,
+      repoId: 1,
+      repoName: "fc-app-000001",
+      fullName: "forge-org/fc-app-000001",
+      htmlUrl: "https://github.com/forge-org/fc-app-000001",
+      founderLogin: "octocat",
+    });
+    const provisioned = async (): Promise<boolean> => (await readLaunchChecks(founder.id, "v1")).repoProvisioned;
+    expect(await provisioned()).toBe(false);
+    for (const [status, expected] of [["invited", true], ["active", true], ["failed", false]] as const) {
+      await pool.query("UPDATE app.project_repos SET collaborator_status = $2 WHERE id = $1", [id, status]);
+      expect(await provisioned()).toBe(expected);
+    }
+    await pool.query(
+      "UPDATE app.project_repos SET collaborator_status = 'active', project_id = '421614:0x01' WHERE id = $1",
+      [id]
+    );
+    expect(await provisioned()).toBe(false);
   });
 });

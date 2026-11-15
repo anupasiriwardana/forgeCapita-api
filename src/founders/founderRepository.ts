@@ -30,6 +30,7 @@ export interface LaunchChecks {
   applicationApproved: boolean;
   agreementAccepted: boolean;
   shadowWalletAvailable: boolean;
+  repoProvisioned: boolean;
 }
 
 export interface OwnWalletRecord {
@@ -111,6 +112,7 @@ interface ChecksRow {
   application_approved: boolean;
   agreement_accepted: boolean;
   shadow_wallet_available: boolean;
+  repo_provisioned: boolean;
 }
 
 const WALLET_SELECT = `SELECT w.id, w.user_id, u.wallet_address AS founder_wallet, w.address, w.status,
@@ -367,7 +369,11 @@ export async function readLaunchChecks(userId: string, version: string): Promise
              SELECT 1 FROM app.launch_drafts d
              WHERE d.founder_wallet_id = w.id AND d.status IN ('pending', 'attached')
            )
-       ) AS shadow_wallet_available`,
+       ) AS shadow_wallet_available,
+       EXISTS (
+         SELECT 1 FROM app.project_repos r
+         WHERE r.user_id = $1::uuid AND r.project_id IS NULL AND r.collaborator_status IN ('invited', 'active')
+       ) AS repo_provisioned`,
     [userId, version]
   );
   const row = result.rows[0];
@@ -375,5 +381,6 @@ export async function readLaunchChecks(userId: string, version: string): Promise
     applicationApproved: row?.application_approved ?? false,
     agreementAccepted: row?.agreement_accepted ?? false,
     shadowWalletAvailable: row?.shadow_wallet_available ?? false,
+    repoProvisioned: row?.repo_provisioned ?? false,
   };
 }

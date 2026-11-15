@@ -55,8 +55,11 @@ function draftRow(overrides: Record<string, unknown> = {}): Record<string, unkno
   };
 }
 
-function checks(a: boolean, g: boolean, w: boolean) {
-  return { rows: [{ application_approved: a, agreement_accepted: g, shadow_wallet_available: w }], rowCount: 1 };
+function checks(a: boolean, g: boolean, w: boolean, r = true) {
+  return {
+    rows: [{ application_approved: a, agreement_accepted: g, shadow_wallet_available: w, repo_provisioned: r }],
+    rowCount: 1,
+  };
 }
 
 function walletRow(overrides: Record<string, unknown> = {}) {
@@ -111,6 +114,13 @@ describe("POST /api/v1/launch-drafts", () => {
     expect((await post("/api/v1/launch-drafts", validBody)).status).toBe(403);
     mockSession(mockQuery, "founder", ADDRESS, checks(true, true, false));
     expect((await post("/api/v1/launch-drafts", validBody)).status).toBe(403);
+  });
+
+  it("returns 403 when no invited or active repo is provisioned", async () => {
+    mockSession(mockQuery, "founder", ADDRESS, checks(true, true, true, false));
+    const res = await post("/api/v1/launch-drafts", validBody);
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("A project repository is required");
   });
 
   it("requires a shadow wallet for founders", async () => {

@@ -405,36 +405,44 @@ describe("POST /api/projects/profile wallet binding", () => {
 });
 
 describe("GET /api/v1/founders/me/launch-eligibility", () => {
-  const cases: Array<[boolean, boolean, boolean, boolean]> = [
-    [true, true, true, true],
-    [true, true, false, false],
-    [true, false, true, false],
-    [false, true, true, false],
-    [false, false, false, false],
+  const cases: Array<[boolean, boolean, boolean, boolean, boolean]> = [
+    [true, true, true, true, true],
+    [true, true, true, false, false],
+    [true, true, false, true, false],
+    [true, false, true, true, false],
+    [false, true, true, true, false],
+    [false, false, false, false, false],
   ];
 
-  it.each(cases)("app=%s agreement=%s wallet=%s -> eligible=%s", async (a, b, c, eligible) => {
+  it.each(cases)("app=%s agreement=%s wallet=%s repo=%s -> eligible=%s", async (a, b, c, d, eligible) => {
     mockSession(mockQuery, "founder", founder.address, {
-      rows: [{ application_approved: a, agreement_accepted: b, shadow_wallet_available: c }],
+      rows: [{ application_approved: a, agreement_accepted: b, shadow_wallet_available: c, repo_provisioned: d }],
       rowCount: 1,
     });
     const res = await request(app).get("/api/v1/founders/me/launch-eligibility").set("Cookie", SESSION_COOKIE_HEADER);
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({
       eligible,
-      checks: { applicationApproved: a, agreementAccepted: b, shadowWalletAvailable: c },
+      checks: { applicationApproved: a, agreementAccepted: b, shadowWalletAvailable: c, repoProvisioned: d },
     });
   });
 
   it("gives a plain investor all false", async () => {
     mockSession(mockQuery, "investor", founder.address, {
-      rows: [{ application_approved: false, agreement_accepted: false, shadow_wallet_available: false }],
+      rows: [
+        { application_approved: false, agreement_accepted: false, shadow_wallet_available: false, repo_provisioned: false },
+      ],
       rowCount: 1,
     });
     const res = await request(app).get("/api/v1/founders/me/launch-eligibility").set("Cookie", SESSION_COOKIE_HEADER);
     expect(res.body.data).toEqual({
       eligible: false,
-      checks: { applicationApproved: false, agreementAccepted: false, shadowWalletAvailable: false },
+      checks: {
+        applicationApproved: false,
+        agreementAccepted: false,
+        shadowWalletAvailable: false,
+        repoProvisioned: false,
+      },
     });
   });
 });

@@ -42,6 +42,7 @@ async function assertFounderEligible(user: AuthUser): Promise<void> {
   if (!checks.applicationApproved) throw new AppError(403, "Founder application is not approved");
   if (!checks.agreementAccepted) throw new AppError(403, "Founder agreement is not accepted");
   if (!checks.shadowWalletAvailable) throw new AppError(403, "No approved shadow wallet is available");
+  if (!checks.repoProvisioned) throw new AppError(403, "A project repository is required");
 }
 
 /** Resolves the wallet to reserve: required and owned for founders, optional for staff and admin. */

@@ -106,5 +106,7 @@ export async function launchEligibility(
   user: AuthUser
 ): Promise<{ eligible: boolean; checks: LaunchChecks }> {
   const checks = await readLaunchChecks(user.id, AGREEMENT_VERSION);
-  return { eligible: checks.applicationApproved && checks.agreementAccepted && checks.shadowWalletAvailable, checks };
+  const eligible =
+    checks.applicationApproved && checks.agreementAccepted && checks.shadowWalletAvailable && checks.repoProvisioned;
+  return { eligible, checks };
 }
