@@ -8,6 +8,7 @@ export const createDraftBodySchema = z
     chainId: z.number().int().refine((value) => ALLOWED_CHAIN_IDS.includes(value), "Unsupported chain"),
     ...profileFieldsShape,
     shadowWalletId: z.string().uuid().optional(),
+    repoId: z.string().uuid().optional(),
     // Declared funding goal in wei: positive decimal string, at most 78 digits, parsed to bigint.
     fundingGoalWei: z
       .string()

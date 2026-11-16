@@ -17,15 +17,15 @@ export interface ReconcileResult {
 /**
  * ONE statement: locks attached drafts whose project is indexed with a matching developer
  * (SKIP LOCKED), inserts the profile unless one already exists (any unique violation counts as
- * a conflict), moves each draft to applied or conflict, links the founder's unlinked repo (if any)
- * to the applied project, and writes the audit rows.
+ * a conflict), moves each draft to applied or conflict, links the draft's chosen repo (or, for drafts
+ * without one, the founder's unlinked repo) to the applied project, and writes the audit rows.
  * The payload keys map to the same columns as projectRepository.upsertProfile.
  */
 function reconcileSql(): string {
   return `
     WITH due AS (
       SELECT d.id, d.user_id, d.wallet_address, d.chain_id, d.escrow_address, d.project_id,
-        d.payload, d.founder_wallet_id
+        d.payload, d.founder_wallet_id, d.repo_id
       FROM app.launch_drafts d
       JOIN ${qualified("project")} p ON p."id" = d.project_id AND lower(p."developer") = d.wallet_address
       WHERE d.status = 'attached' AND ($1::uuid IS NULL OR d.id = $1::uuid)
@@ -49,12 +49,14 @@ function reconcileSql(): string {
       UPDATE app.launch_drafts d SET status = 'applied', applied_at = now(), updated_at = now()
       FROM due
       WHERE d.id = due.id AND due.project_id IN (SELECT project_id FROM inserted)
-      RETURNING d.id, d.user_id, d.wallet_address, d.project_id
+      RETURNING d.id, d.user_id, d.wallet_address, d.project_id, due.repo_id
     ),
     linked AS (
       UPDATE app.project_repos r SET project_id = a.project_id, updated_at = now()
       FROM applied a
-      WHERE r.user_id = a.user_id AND r.project_id IS NULL
+      WHERE r.project_id IS NULL
+        AND ((a.repo_id IS NOT NULL AND r.id = a.repo_id AND r.user_id = a.user_id)
+          OR (a.repo_id IS NULL AND r.user_id = a.user_id))
       RETURNING r.user_id, r.project_id
     ),
     conflicted AS (

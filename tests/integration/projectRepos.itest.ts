@@ -37,13 +37,14 @@ const CHAIN = 421614;
 const escrow = (n: number): string => addr(0xe00 + n);
 const REPO_PROJECT = `${CHAIN}:${escrow(1)}`;
 
-async function attachedDraft(user: TestUser, escrowAddr: string): Promise<string> {
+async function attachedDraft(user: TestUser, escrowAddr: string, repoId: string | null = null): Promise<string> {
   const walletId = await createApprovedWallet(user.id, addr(500 + Number(BigInt(user.address) % 1000n)));
   const d = await insertDraft({
     userId: user.id,
     walletAddress: user.address,
     chainId: CHAIN,
     founderWalletId: walletId,
+    repoId,
     payload: { name: "Acme", description: "A SaaS", category: "defi" },
     ip: null,
   });
@@ -102,6 +103,55 @@ describe("reconcile links the founder's repo", () => {
     expect(await reconcileDrafts()).toMatchObject({ applied: 1, conflicts: 0 });
     expect(await repoProject(repoId)).toBeNull();
     expect(await linkAudits()).toEqual([]);
+  });
+});
+
+describe("launch draft repo choice (migration 023)", () => {
+  async function founderWithTwoRepos(): Promise<{ user: TestUser; r1: string; r2: string }> {
+    const user = await createUser(1, "founder");
+    const r1 = await insertRepo(pool, repo(user.id, 1));
+    await pool.query("UPDATE app.project_repos SET collaborator_status = 'active', project_id = $2 WHERE id = $1", [r1, `${CHAIN}:${escrow(9)}`]);
+    const r2 = await insertRepo(pool, repo(user.id, 2));
+    await pool.query("UPDATE app.project_repos SET collaborator_status = 'active' WHERE id = $1", [r2]);
+    return { user, r1, r2 };
+  }
+
+  it("links only the chosen repo with one repo.link audit row", async () => {
+    const { user, r1, r2 } = await founderWithTwoRepos();
+    await attachedDraft(user, escrow(1), r2);
+    await insertPonderProject({ chainId: CHAIN, escrow: escrow(1), developer: user.address });
+    expect(await reconcileDrafts()).toMatchObject({ applied: 1, conflicts: 0 });
+    expect(await repoProject(r2)).toBe(REPO_PROJECT);
+    expect(await repoProject(r1)).toBe(`${CHAIN}:${escrow(9)}`);
+    expect(await linkAudits()).toEqual([`${user.address}|unlinked|linked`]);
+  });
+
+  it("leaves the repo unlinked on conflict", async () => {
+    const { user, r2 } = await founderWithTwoRepos();
+    await attachedDraft(user, escrow(1), r2);
+    await insertPonderProject({ chainId: CHAIN, escrow: escrow(1), developer: user.address });
+    await pool.query(
+      "INSERT INTO app.startup_profiles (project_id, chain_id, escrow_address, name, description) VALUES ($1, $2, $3, 'Existing', 'x')",
+      [REPO_PROJECT, CHAIN, escrow(1)]
+    );
+    expect(await reconcileDrafts()).toMatchObject({ applied: 0, conflicts: 1 });
+    expect(await repoProject(r2)).toBeNull();
+  });
+
+  it("rejects a second pending draft for the same repo", async () => {
+    const { user, r2 } = await founderWithTwoRepos();
+    const draft = (walletId: string) => ({
+      userId: user.id,
+      walletAddress: user.address,
+      chainId: CHAIN,
+      founderWalletId: walletId,
+      repoId: r2,
+      payload: { name: "Acme", description: "A SaaS" },
+      ip: null,
+    });
+    await insertDraft(draft(await createApprovedWallet(user.id, addr(601))));
+    const err = await pgErrorOf(insertDraft(draft(await createApprovedWallet(user.id, addr(602)))));
+    expect(err.constraint).toBe("launch_drafts_active_repo_uidx");
   });
 });
 

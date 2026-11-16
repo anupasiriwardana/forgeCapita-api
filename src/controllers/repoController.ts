@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { AppError } from "../errors.js";
 import type { ValidatedRequest } from "../middlewares/validate.js";
-import { findLatestRepo, listRepos, type RepoRecord } from "../repos/repoRepository.js";
+import { findLatestRepo, listOwnRepos, listRepos, type OwnRepoRecord, type RepoRecord } from "../repos/repoRepository.js";
 import { provisionRepo, revokeRepoAccess } from "../repos/repoService.js";
 import type { AdminReposQuery, ProvisionRepoBody, RevokeRepoParams } from "../schemas/repoSchemas.js";
 import type { ApiResponse } from "../types/index.js";
@@ -17,6 +17,16 @@ function toOwnerDto(r: RepoRecord): Record<string, unknown> {
     founderLogin: r.founderLogin,
     status: r.status,
     createdAt: r.createdAt.toISOString(),
+  };
+}
+
+function toOwnListDto(r: OwnRepoRecord): Record<string, unknown> {
+  return {
+    id: r.id,
+    ...toOwnerDto(r),
+    projectId: r.projectId,
+    projectName: r.projectName,
+    reserved: r.reserved,
   };
 }
 
@@ -46,7 +56,18 @@ export async function postOwnRepo(req: Request, res: Response, next: NextFunctio
     if (!req.user) throw new AppError(401, "Authentication required");
     const body = validatedOf<ProvisionRepoBody>(res, "body");
     const { repo, created } = await provisionRepo(req.user, body, req.ip ?? null);
-    res.status(created ? 201 : 200).json({ success: true, data: { repo: toOwnerDto(repo) } } satisfies ApiResponse);
+    res.status(created ? 201 : 200).json({ success: true, data: { repo: { id: repo.id, ...toOwnerDto(repo) } } } satisfies ApiResponse);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getOwnRepos(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    if (!req.user) throw new AppError(401, "Authentication required");
+    const items = await listOwnRepos(req.user.id);
+    res.setHeader("Cache-Control", "no-store");
+    res.status(200).json({ success: true, data: { items: items.map(toOwnListDto) } } satisfies ApiResponse);
   } catch (err) {
     next(err);
   }

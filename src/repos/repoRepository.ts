@@ -87,6 +87,45 @@ export async function findUnlinkedRepo(db: Db, userId: string): Promise<RepoReco
   return row ? toRecord(row) : null;
 }
 
+/** The caller's repo a launch draft may use: unlinked, invited or active, and the given one when repoId is set. */
+export async function findSelectableRepo(db: Db, userId: string, repoId?: string): Promise<RepoRecord | null> {
+  const result = await db.query<RepoRow>(
+    `SELECT ${COLUMNS} FROM app.project_repos r JOIN app.users u ON u.id = r.user_id
+     WHERE r.user_id = $1::uuid AND r.project_id IS NULL AND r.collaborator_status IN ('invited', 'active')
+       AND ($2::uuid IS NULL OR r.id = $2::uuid)
+     ORDER BY r.created_at DESC LIMIT 1`,
+    [userId, repoId ?? null]
+  );
+  const row = result.rows[0];
+  return row ? toRecord(row) : null;
+}
+
+export interface OwnRepoRecord extends RepoRecord {
+  projectName: string | null;
+  reserved: boolean;
+}
+
+interface OwnRepoRow extends RepoRow {
+  project_name: string | null;
+  reserved: boolean;
+}
+
+/** All of the founder's repos, newest first, with the linked project's name and whether a draft holds it. */
+export async function listOwnRepos(userId: string): Promise<OwnRepoRecord[]> {
+  const result = await pool.query<OwnRepoRow>(
+    `SELECT ${COLUMNS}, s.name AS project_name,
+       EXISTS (
+         SELECT 1 FROM app.launch_drafts d
+         WHERE d.repo_id = r.id AND d.status IN ('pending', 'attached')
+       ) AS reserved
+     FROM app.project_repos r JOIN app.users u ON u.id = r.user_id
+     LEFT JOIN app.startup_profiles s ON s.project_id = r.project_id
+     WHERE r.user_id = $1::uuid ORDER BY r.created_at DESC, r.id`,
+    [userId]
+  );
+  return result.rows.map((row) => ({ ...toRecord(row), projectName: row.project_name, reserved: row.reserved }));
+}
+
 /** Inserts a fresh repo row with status failed (promoted once the invite succeeds). */
 export async function insertRepo(db: Db, repo: NewRepo): Promise<string> {
   const result = await db.query<{ id: string }>(

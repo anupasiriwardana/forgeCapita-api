@@ -27,6 +27,7 @@ const ESCROW_LOWER = ESCROW.toLowerCase();
 const DRAFT_ID = "dddddddd-0000-4000-8000-000000000001";
 const WALLET_ID = "bbbbbbbb-0000-4000-8000-000000000001";
 const USER_ID = "11111111-1111-1111-1111-111111111111";
+const REPO_ID = "cccccccc-0000-4000-8000-000000000001";
 const OTHER_USER_ID = "22222222-2222-2222-2222-222222222222";
 
 const validBody = { chainId: 421614, name: "Acme", description: "A SaaS", shadowWalletId: WALLET_ID };
@@ -69,6 +70,7 @@ function walletRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const repoRow = { rows: [{ id: REPO_ID }], rowCount: 1 };
 const rows = (...r: Array<Record<string, unknown>>) => ({ rows: r, rowCount: r.length });
 const none = { rows: [], rowCount: 0 };
 const reconcileOk = { rows: [{ applied: "0", conflicts: "0" }], rowCount: 1 };
@@ -124,35 +126,35 @@ describe("POST /api/v1/launch-drafts", () => {
   });
 
   it("requires a shadow wallet for founders", async () => {
-    mockSession(mockQuery, "founder", ADDRESS, checks(true, true, true));
+    mockSession(mockQuery, "founder", ADDRESS, checks(true, true, true), repoRow);
     const { shadowWalletId: _omit, ...withoutWallet } = validBody;
     expect((await post("/api/v1/launch-drafts", withoutWallet)).status).toBe(400);
   });
 
   it("returns 400 for unknown, unapproved or foreign wallets", async () => {
-    mockSession(mockQuery, "founder", ADDRESS, checks(true, true, true), none);
+    mockSession(mockQuery, "founder", ADDRESS, checks(true, true, true), repoRow, none);
     expect((await post("/api/v1/launch-drafts", validBody)).status).toBe(400);
-    mockSession(mockQuery, "founder", ADDRESS, checks(true, true, true), walletRow({ user_id: OTHER_USER_ID }));
+    mockSession(mockQuery, "founder", ADDRESS, checks(true, true, true), repoRow, walletRow({ user_id: OTHER_USER_ID }));
     const res = await post("/api/v1/launch-drafts", validBody);
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("Shadow wallet not available");
   });
 
   it("returns 409 when the wallet is reserved, bound, or the reservation index is hit", async () => {
-    mockSession(mockQuery, "founder", ADDRESS, checks(true, true, true), walletRow({ reserved: true }));
+    mockSession(mockQuery, "founder", ADDRESS, checks(true, true, true), repoRow, walletRow({ reserved: true }));
     expect((await post("/api/v1/launch-drafts", validBody)).status).toBe(409);
-    mockSession(mockQuery, "founder", ADDRESS, checks(true, true, true), walletRow({ bound: true }));
+    mockSession(mockQuery, "founder", ADDRESS, checks(true, true, true), repoRow, walletRow({ bound: true }));
     expect((await post("/api/v1/launch-drafts", validBody)).status).toBe(409);
     const violation = Object.assign(new Error("duplicate"), {
       code: "23505",
       constraint: "launch_drafts_active_wallet_uidx",
     });
-    mockSession(mockQuery, "founder", ADDRESS, checks(true, true, true), walletRow(), violation);
+    mockSession(mockQuery, "founder", ADDRESS, checks(true, true, true), repoRow, walletRow(), violation);
     expect((await post("/api/v1/launch-drafts", validBody)).status).toBe(409);
   });
 
   it("creates a draft with an audit-bearing single statement", async () => {
-    const calls = mockSession(mockQuery, "founder", ADDRESS, checks(true, true, true), walletRow(), rows(draftRow()));
+    const calls = mockSession(mockQuery, "founder", ADDRESS, checks(true, true, true), repoRow, walletRow(), rows(draftRow()));
     const res = await post("/api/v1/launch-drafts", validBody);
     expect(res.status).toBe(201);
     expect(res.headers["cache-control"]).toBe("no-store");
@@ -165,11 +167,43 @@ describe("POST /api/v1/launch-drafts", () => {
         createdAt: "2023-11-14T22:13:20.000Z",
       },
     });
-    const [sql, params] = calls()[2] as [string, unknown[]];
+    const [sql, params] = calls()[3] as [string, unknown[]];
     expect(sql).toContain("'launch_draft.create'");
+    expect(params[6]).toBe(REPO_ID);
     expect(params[1]).toBe(ADDRESS);
     expect(params[3]).toBe(WALLET_ID);
     expect(JSON.parse(params[4] as string)).toEqual({ name: "Acme", description: "A SaaS" });
+  });
+
+  it("defaults to the sole selectable repo and passes an explicit repoId to the lookup", async () => {
+    const calls = mockSession(mockQuery, "founder", ADDRESS, checks(true, true, true), repoRow, walletRow(), rows(draftRow()));
+    expect((await post("/api/v1/launch-drafts", validBody)).status).toBe(201);
+    expect((calls()[1] as [string, unknown[]])[1]).toEqual([USER_ID, null]);
+    mockSession(mockQuery, "founder", ADDRESS, checks(true, true, true), repoRow, walletRow(), rows(draftRow()));
+    expect((await post("/api/v1/launch-drafts", { ...validBody, repoId: REPO_ID })).status).toBe(201);
+    const second = mockQuery.mock.calls.filter((c) => String(c[0]).includes("FROM app.project_repos"));
+    expect((second[second.length - 1] as [string, unknown[]])[1]).toEqual([USER_ID, REPO_ID]);
+  });
+
+  it("returns 400 for a foreign, linked or failed repoId and reserves no wallet", async () => {
+    const calls = mockSession(mockQuery, "founder", ADDRESS, checks(true, true, true), none);
+    const res = await post("/api/v1/launch-drafts", { ...validBody, repoId: REPO_ID });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Repository not available");
+    expect(calls()).toHaveLength(2);
+  });
+
+  it("returns 409 when the repo reservation index is hit", async () => {
+    const violation = Object.assign(new Error("duplicate"), { code: "23505", constraint: "launch_drafts_active_repo_uidx" });
+    mockSession(mockQuery, "founder", ADDRESS, checks(true, true, true), repoRow, walletRow(), violation);
+    const res = await post("/api/v1/launch-drafts", validBody);
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("Repository is already reserved by another draft");
+  });
+
+  it("rejects repoId from staff", async () => {
+    mockSession(mockQuery, "staff", ADDRESS);
+    expect((await post("/api/v1/launch-drafts", { ...validBody, repoId: REPO_ID })).status).toBe(400);
   });
 
   it.each(["staff", "admin"])("lets %s create a draft without a wallet or eligibility", async (role) => {
@@ -179,6 +213,7 @@ describe("POST /api/v1/launch-drafts", () => {
     expect(res.status).toBe(201);
     expect(calls()).toHaveLength(1);
     expect((calls()[0] as [string, unknown[]])[1][3]).toBeNull();
+    expect((calls()[0] as [string, unknown[]])[1][6]).toBeNull();
   });
 });
 

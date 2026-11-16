@@ -10,7 +10,7 @@ import {
   postRejectWallet,
   postShadowWallet,
 } from "../controllers/founderController.js";
-import { getOwnRepo, postOwnRepo } from "../controllers/repoController.js";
+import { getOwnRepo, getOwnRepos, postOwnRepo } from "../controllers/repoController.js";
 import { provisionRepoBodySchema } from "../schemas/repoSchemas.js";
 import { validate } from "../middlewares/validate.js";
 import {
@@ -70,6 +70,7 @@ export function createFounderRoutes(writeLimiter: RequestHandler): Router {
     postOwnRepo
   );
   router.get("/me/repo", requireAuth, requireRole("founder"), getOwnRepo);
+  router.get("/me/repos", requireAuth, requireRole("founder"), getOwnRepos);
   router.get("/me", requireAuth, requireRole("founder"), getMe);
   router.get("/me/launch-eligibility", requireAuth, getLaunchEligibility);
 

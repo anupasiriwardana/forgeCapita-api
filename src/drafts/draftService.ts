@@ -1,6 +1,8 @@
 import { AppError } from "../errors.js";
 import { AGREEMENT_VERSION } from "../founders/agreement.js";
 import { assertGoalMeetsMinimum } from "../gas/minimumGoal.js";
+import { pool } from "../db/pool.js";
+import { findSelectableRepo } from "../repos/repoRepository.js";
 import { findApprovedWallet, readLaunchChecks } from "../founders/founderRepository.js";
 import { logger } from "../logger.js";
 import { toLoggableError } from "../middlewares/errorHandler.js";
@@ -17,6 +19,7 @@ import { reconcileDrafts } from "./reconcile.js";
 
 const PG_UNIQUE_VIOLATION = "23505";
 const RESERVATION_INDEX = "launch_drafts_active_wallet_uidx";
+const REPO_INDEX = "launch_drafts_active_repo_uidx";
 const PROJECT_INDEX = "launch_drafts_project_uidx";
 
 function pgField(err: unknown, key: "code" | "constraint"): string | undefined {
@@ -59,6 +62,17 @@ async function resolveReservedWallet(walletId: string | undefined, user: AuthUse
   return wallet.id;
 }
 
+/** Founders get their chosen repo (or their single selectable one); staff and admin never carry a repo. */
+async function resolveRepo(repoId: string | undefined, user: AuthUser): Promise<string | null> {
+  if (isStaff(user)) {
+    if (repoId !== undefined) throw new AppError(400, "repoId is not allowed for staff");
+    return null;
+  }
+  const repo = await findSelectableRepo(pool, user.id, repoId);
+  if (!repo) throw new AppError(400, "Repository not available");
+  return repo.id;
+}
+
 function payloadOf(body: CreateDraftBody): DraftPayload {
   return {
     name: body.name,
@@ -81,6 +95,8 @@ export async function createDraft(
   if (!isStaff(user)) await assertFounderEligible(user);
   // Before any row or shadow-wallet reservation; staff and admin follow the same rule.
   await assertGoalMeetsMinimum(body.chainId, body.fundingGoalWei);
+  // Repo check precedes the wallet check, so a rejected repo never reaches the reservation.
+  const repoId = await resolveRepo(body.repoId, user);
   const founderWalletId = await resolveReservedWallet(body.shadowWalletId, user);
   try {
     return await insertDraft({
@@ -88,12 +104,16 @@ export async function createDraft(
       walletAddress: user.address.toLowerCase(),
       chainId: body.chainId,
       founderWalletId,
+      repoId,
       payload: payloadOf(body),
       ip,
     });
   } catch (err) {
     if (isUniqueViolation(err, RESERVATION_INDEX)) {
       throw new AppError(409, "Shadow wallet is already reserved or bound");
+    }
+    if (isUniqueViolation(err, REPO_INDEX)) {
+      throw new AppError(409, "Repository is already reserved by another draft");
     }
     throw err;
   }

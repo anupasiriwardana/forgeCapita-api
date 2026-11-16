@@ -21,6 +21,7 @@ export interface NewDraft {
   walletAddress: string;
   chainId: number;
   founderWalletId: string | null;
+  repoId: string | null;
   payload: DraftPayload;
   ip: string | null;
 }
@@ -67,8 +68,8 @@ function toDraft(row: DraftRow): DraftRecord {
 export async function insertDraft(input: NewDraft): Promise<DraftRecord> {
   const result = await pool.query<DraftRow>(
     `WITH created AS (
-       INSERT INTO app.launch_drafts (user_id, wallet_address, chain_id, founder_wallet_id, payload)
-       VALUES ($1::uuid, $2::text, $3::integer, $4::uuid, $5::jsonb)
+       INSERT INTO app.launch_drafts (user_id, wallet_address, chain_id, founder_wallet_id, payload, repo_id)
+       VALUES ($1::uuid, $2::text, $3::integer, $4::uuid, $5::jsonb, $7::uuid)
        RETURNING ${DRAFT_COLUMNS}, wallet_address
      ),
      audited AS (
@@ -85,6 +86,7 @@ export async function insertDraft(input: NewDraft): Promise<DraftRecord> {
       input.founderWalletId,
       JSON.stringify(input.payload),
       input.ip,
+      input.repoId,
     ]
   );
   const row = result.rows[0];

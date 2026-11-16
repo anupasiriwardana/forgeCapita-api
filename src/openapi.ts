@@ -193,6 +193,16 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/v1/founders/me/repos": {
+      get: {
+        summary: "All own repos with linked project name and draft reservation (session cookie, founder)",
+        responses: {
+          "200": repoOk("Items: id, fullName, htmlUrl, founderLogin, status, createdAt, projectId, projectName, reserved"),
+          "401": errorResponse("Authentication required"),
+          "403": errorResponse("Not a founder"),
+        },
+      },
+    },
     "/api/v1/admin/repos": {
       get: {
         summary: "List provisioned repos (staff or admin); items add userId, founderWallet and projectId",

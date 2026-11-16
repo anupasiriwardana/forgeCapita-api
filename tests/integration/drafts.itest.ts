@@ -43,7 +43,7 @@ async function draftStatus(id: string): Promise<string | undefined> {
 }
 
 function newDraft(user: TestUser, walletId: string | null) {
-  return { userId: user.id, walletAddress: user.address, chainId: CHAIN, founderWalletId: walletId, payload, ip: "3.3.3.3" };
+  return { userId: user.id, walletAddress: user.address, chainId: CHAIN, founderWalletId: walletId, repoId: null, payload, ip: "3.3.3.3" };
 }
 
 describe("launch drafts: create, attach, cancel", () => {
