@@ -2,8 +2,8 @@ import type { NextFunction, Request, Response } from "express";
 import { AppError } from "../errors.js";
 import type { ValidatedRequest } from "../middlewares/validate.js";
 import { findLatestRepo, listRepos, type RepoRecord } from "../repos/repoRepository.js";
-import { provisionRepo } from "../repos/repoService.js";
-import type { AdminReposQuery, ProvisionRepoBody } from "../schemas/repoSchemas.js";
+import { provisionRepo, revokeRepoAccess } from "../repos/repoService.js";
+import type { AdminReposQuery, ProvisionRepoBody, RevokeRepoParams } from "../schemas/repoSchemas.js";
 import type { ApiResponse } from "../types/index.js";
 
 function validatedOf<T>(res: Response, key: keyof ValidatedRequest): T {
@@ -21,7 +21,24 @@ function toOwnerDto(r: RepoRecord): Record<string, unknown> {
 }
 
 function toStaffDto(r: RepoRecord): Record<string, unknown> {
-  return { ...toOwnerDto(r), userId: r.userId, founderWallet: r.founderWallet, projectId: r.projectId };
+  return {
+    ...toOwnerDto(r),
+    userId: r.userId,
+    founderWallet: r.founderWallet,
+    projectId: r.projectId,
+    revokedAt: r.revokedAt === null ? null : r.revokedAt.toISOString(),
+  };
+}
+
+export async function postRevokeRepo(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    if (!req.user) throw new AppError(401, "Authentication required");
+    const { id } = validatedOf<RevokeRepoParams>(res, "params");
+    const repo = await revokeRepoAccess(id, req.user.id, req.ip ?? null);
+    res.status(200).json({ success: true, data: { repo: { id: repo.id, ...toStaffDto(repo) } } } satisfies ApiResponse);
+  } catch (err) {
+    next(err);
+  }
 }
 
 export async function postOwnRepo(req: Request, res: Response, next: NextFunction): Promise<void> {

@@ -27,5 +27,17 @@ export const adminReposQuerySchema = z
   })
   .strict();
 
+export const revokeRepoParamsSchema = z
+  .object({
+    id: z
+      .string()
+      .regex(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/, "Invalid id")
+      .transform((value) => value.toLowerCase()),
+  })
+  .strict();
+
+export const revokeRepoBodySchema = z.object({}).strict();
+
+export type RevokeRepoParams = z.output<typeof revokeRepoParamsSchema>;
 export type ProvisionRepoBody = z.output<typeof provisionRepoBodySchema>;
 export type AdminReposQuery = z.output<typeof adminReposQuerySchema>;

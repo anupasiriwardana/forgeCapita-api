@@ -22,7 +22,7 @@ const { createApp } = await import("../src/app.js");
 const { envSchema } = await import("../src/config/env.js");
 const { GithubProvider, signAppJwt } = await import("../src/repos/githubProvider.js");
 const { buildRepoName, slugify } = await import("../src/repos/repoNaming.js");
-const { provisionRepo } = await import("../src/repos/repoService.js");
+const { provisionRepo, revokeRepoAccess } = await import("../src/repos/repoService.js");
 const { AppError } = await import("../src/errors.js");
 import type { RepoProvider } from "../src/repos/repoProvider.js";
 import type { AuthUser } from "../src/types/index.js";
@@ -228,6 +228,36 @@ describe("GithubProvider", () => {
     for (const e of [invite, limited, failed]) expect((e as Error).message).not.toContain("leak-me");
   });
 
+  it("removes the collaborator and cancels only the matching pending invitation", async () => {
+    const { provider, calls } = make((call) => {
+      if (call.url.endsWith("/access_tokens")) return { status: 201, body: { token: "t", expires_at: new Date(nowMs + 3_600_000).toISOString() } };
+      if (call.method === "GET") {
+        return { status: 200, body: [{ id: 5, invitee: { login: "OctoCat" } }, { id: 6, invitee: { login: "other" } }] };
+      }
+      return { status: 204 };
+    });
+    await provider.removeCollaborator("fc-x-abcdef", "octocat");
+    const base = "https://api.github.com/repos/forge-org/fc-x-abcdef";
+    const deletes = calls.filter((c) => c.method === "DELETE").map((c) => c.url);
+    expect(deletes).toEqual([`${base}/collaborators/octocat`, `${base}/invitations/5`]);
+  });
+
+  it("treats 404 on removal and on invitation deletion as success, and maps other failures", async () => {
+    const ok = make((call) => {
+      if (call.url.endsWith("/access_tokens")) return { status: 201, body: { token: "t", expires_at: new Date(nowMs + 3_600_000).toISOString() } };
+      if (call.method === "GET") return { status: 200, body: [{ id: 5, invitee: { login: "octocat" } }] };
+      return { status: 404 };
+    });
+    await expect(ok.provider.removeCollaborator("r", "octocat")).resolves.toBeUndefined();
+    const bad = make((call) => {
+      if (call.url.endsWith("/access_tokens")) return { status: 201, body: { token: "t", expires_at: new Date(nowMs + 3_600_000).toISOString() } };
+      return { status: 500, body: { message: "leak-me" } };
+    });
+    const err = await bad.provider.removeCollaborator("r", "octocat").catch((e: unknown) => e);
+    expect((err as InstanceType<typeof AppError>).status).toBe(502);
+    expect((err as Error).message).not.toContain("leak-me");
+  });
+
   it("sends the branch protection request to the default branch", async () => {
     const { provider, calls } = make(githubRouter(nowMs));
     await provider.protectDefaultBranch("fc-x-abcdef", "main");
@@ -253,6 +283,9 @@ function fakeProvider(overrides: Partial<RepoProvider> = {}): RepoProvider & { l
     addCollaborator: jest.fn(async (repo: string, login: string) => {
       log.push(`invite:${repo}:${login}`);
       return { status: "invited" as const, collaboratorId: 7 };
+    }),
+    removeCollaborator: jest.fn(async (repo: string, login: string) => {
+      log.push(`remove:${repo}:${login}`);
     }),
     protectDefaultBranch: jest.fn(async () => {
       log.push("protect");
@@ -369,6 +402,88 @@ describe("provisionRepo", () => {
       (e: unknown) => e
     );
     expect((err as InstanceType<typeof AppError>).status).toBe(409);
+  });
+});
+
+describe("revokeRepoAccess", () => {
+  const ADMIN_ID = "22222222-2222-2222-2222-222222222222";
+
+  function mockRevokeDb(row: Record<string, unknown> | null): string[] {
+    const sql: string[] = [];
+    mockQuery.mockImplementation(async (text: unknown) => {
+      const q = String(text);
+      sql.push(q);
+      if (q.includes("FOR UPDATE OF r")) return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
+      if (q.includes("SET collaborator_status = 'revoked'")) return { rows: [{ revoked_at: new Date(1_700_000_100_000) }], rowCount: 1 };
+      return { rows: [], rowCount: 1 };
+    });
+    return sql;
+  }
+
+  it("removes access, marks revoked and audits with the old status", async () => {
+    const sql = mockRevokeDb(repoRow("invited"));
+    const provider = fakeProvider();
+    const repo = await revokeRepoAccess("rid-1", ADMIN_ID, "9.9.9.9", provider);
+    expect(provider.removeCollaborator).toHaveBeenCalledWith("fc-my-cool-app-abcdef", "octocat");
+    expect(repo.status).toBe("revoked");
+    expect(repo.revokedAt).toEqual(new Date(1_700_000_100_000));
+    const audit = mockQuery.mock.calls.find((c) => String(c[0]).includes("INSERT INTO app.audit_log"));
+    expect(String(audit?.[0])).toContain("'repo.revoke'");
+    expect(audit?.[1]).toEqual([ADMIN_ID, FOUNDER, "invited", "9.9.9.9"]);
+    expect(sql).toContain("COMMIT");
+  });
+
+  it("is idempotent: an already revoked repo makes no provider call and no audit row", async () => {
+    const sql = mockRevokeDb(repoRow("revoked"));
+    const provider = fakeProvider();
+    const repo = await revokeRepoAccess("rid-1", ADMIN_ID, null, provider);
+    expect(repo.status).toBe("revoked");
+    expect(provider.removeCollaborator).not.toHaveBeenCalled();
+    expect(sql.some((q) => q.includes("INSERT INTO app.audit_log"))).toBe(false);
+  });
+
+  it("leaves row and audit untouched when the provider fails", async () => {
+    const sql = mockRevokeDb(repoRow("active"));
+    const provider = fakeProvider({
+      removeCollaborator: jest.fn(async () => {
+        throw new AppError(502, "Repository provider request failed", true);
+      }),
+    });
+    const err = await revokeRepoAccess("rid-1", ADMIN_ID, null, provider).catch((e: unknown) => e);
+    expect((err as InstanceType<typeof AppError>).status).toBe(502);
+    expect(sql).toContain("ROLLBACK");
+    expect(sql.some((q) => q.includes("SET collaborator_status = 'revoked'") || q.includes("INSERT INTO app.audit_log"))).toBe(false);
+  });
+
+  it("answers 404 for an unknown repo and 503 when the provider is not configured", async () => {
+    mockRevokeDb(null);
+    const missing = await revokeRepoAccess("rid-1", ADMIN_ID, null, fakeProvider()).catch((e: unknown) => e);
+    expect((missing as InstanceType<typeof AppError>).status).toBe(404);
+    mockRevokeDb(repoRow("active"));
+    const unconfigured = await revokeRepoAccess("rid-1", ADMIN_ID, null, null).catch((e: unknown) => e);
+    expect((unconfigured as InstanceType<typeof AppError>).status).toBe(503);
+  });
+});
+
+describe("POST /api/v1/admin/repos/:id/revoke guards", () => {
+  const URL = "/api/v1/admin/repos/33333333-3333-3333-3333-333333333333/revoke";
+
+  it("401 anonymous, 403 bad origin, 403 staff and founder", async () => {
+    mockSession(mockQuery, "admin", FOUNDER);
+    expect((await request(app).post(URL).set("Origin", ALLOWED_ORIGIN).send({})).status).toBe(401);
+    expect((await request(app).post(URL).set("Origin", "https://evil.example").set("Cookie", SESSION_COOKIE_HEADER).send({})).status).toBe(403);
+    for (const role of ["staff", "founder"]) {
+      mockSession(mockQuery, role, FOUNDER);
+      expect((await request(app).post(URL).set("Origin", ALLOWED_ORIGIN).set("Cookie", SESSION_COOKIE_HEADER).send({})).status).toBe(403);
+    }
+  });
+
+  it("rejects a malformed id and unknown body fields for an admin", async () => {
+    mockSession(mockQuery, "admin", FOUNDER);
+    const send = (url: string, body: object) =>
+      request(app).post(url).set("Origin", ALLOWED_ORIGIN).set("Cookie", SESSION_COOKIE_HEADER).send(body);
+    expect((await send("/api/v1/admin/repos/not-a-uuid/revoke", {})).status).toBe(400);
+    expect((await send(URL, { extra: 1 })).status).toBe(400);
   });
 });
 

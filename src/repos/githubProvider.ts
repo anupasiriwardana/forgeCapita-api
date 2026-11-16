@@ -113,6 +113,25 @@ export class GithubProvider implements RepoProvider {
     throw mapFailure(res, new AppError(422, "GitHub user cannot be invited", true));
   }
 
+  /** DELETE the collaborator (204 removed, 404 gone) and cancel any pending invitation for the login. */
+  async removeCollaborator(repoName: string, login: string): Promise<void> {
+    const repoPath = `/repos/${encodeURIComponent(this.options.org)}/${encodeURIComponent(repoName)}`;
+    const removed = await this.request("DELETE", `${repoPath}/collaborators/${encodeURIComponent(login)}`, "installation");
+    if (removed.status !== 204 && !(removed.status === 404 && !removed.rateLimited)) throw mapFailure(removed, null);
+
+    const listed = await this.request("GET", `${repoPath}/invitations?per_page=100`, "installation");
+    if (listed.status === 404 && !listed.rateLimited) return;
+    if (listed.status !== 200 || !Array.isArray(listed.body)) throw mapFailure(listed, null);
+    for (const invitation of listed.body as unknown[]) {
+      if (!isRecord(invitation) || typeof invitation["id"] !== "number") continue;
+      const invitee = invitation["invitee"];
+      if (!isRecord(invitee) || typeof invitee["login"] !== "string") continue;
+      if (invitee["login"].toLowerCase() !== login.toLowerCase()) continue;
+      const cancelled = await this.request("DELETE", `${repoPath}/invitations/${invitation["id"]}`, "installation");
+      if (cancelled.status !== 204 && !(cancelled.status === 404 && !cancelled.rateLimited)) throw mapFailure(cancelled, null);
+    }
+  }
+
   async protectDefaultBranch(repoName: string, branch: string): Promise<void> {
     const path = `/repos/${encodeURIComponent(this.options.org)}/${encodeURIComponent(repoName)}/branches/${encodeURIComponent(branch)}/protection`;
     const res = await this.request("PUT", path, "installation", {

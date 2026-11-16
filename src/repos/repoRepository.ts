@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 import { pool } from "../db/pool.js";
 
-export type RepoStatus = "invited" | "active" | "failed";
+export type RepoStatus = "invited" | "active" | "failed" | "revoked";
 
 export interface RepoRecord {
   id: string;
@@ -17,6 +17,7 @@ export interface RepoRecord {
   status: RepoStatus;
   projectId: string | null;
   createdAt: Date;
+  revokedAt: Date | null;
 }
 
 export interface NewRepo {
@@ -44,11 +45,12 @@ interface RepoRow {
   collaborator_status: RepoStatus;
   project_id: string | null;
   created_at: Date;
+  revoked_at?: Date | null;
 }
 
 const COLUMNS = `r.id, r.user_id, u.wallet_address AS founder_wallet, r.provider, r.repo_id::text AS repo_id,
   r.repo_name, r.full_name, r.html_url, r.founder_login, r.collaborator_id::text AS collaborator_id,
-  r.collaborator_status, r.project_id, r.created_at`;
+  r.collaborator_status, r.project_id, r.created_at, r.revoked_at`;
 
 function toRecord(row: RepoRow): RepoRecord {
   return {
@@ -65,6 +67,7 @@ function toRecord(row: RepoRow): RepoRecord {
     status: row.collaborator_status,
     projectId: row.project_id,
     createdAt: row.created_at,
+    revokedAt: row.revoked_at ?? null,
   };
 }
 
@@ -121,6 +124,44 @@ export async function insertProvisionAudit(
     `INSERT INTO app.audit_log (actor_user_id, action, target, before_value, after_value, ip)
      VALUES ($1, 'repo.provision', $2, $3, $4, $5)`,
     [actorUserId, founderWallet, before, after, ip]
+  );
+}
+
+/** Locks one repo row for the rest of the transaction; null when the id is unknown. */
+export async function findRepoForUpdate(db: Db, id: string): Promise<RepoRecord | null> {
+  const result = await db.query<RepoRow>(
+    `SELECT ${COLUMNS} FROM app.project_repos r JOIN app.users u ON u.id = r.user_id
+     WHERE r.id = $1 FOR UPDATE OF r`,
+    [id]
+  );
+  const row = result.rows[0];
+  return row ? toRecord(row) : null;
+}
+
+/** Marks the repo revoked and returns the stored timestamp. */
+export async function markRevoked(db: Db, id: string): Promise<Date> {
+  const result = await db.query<{ revoked_at: Date }>(
+    `UPDATE app.project_repos SET collaborator_status = 'revoked', revoked_at = now(), updated_at = now()
+     WHERE id = $1 RETURNING revoked_at`,
+    [id]
+  );
+  const row = result.rows[0];
+  if (!row) throw new Error("project_repos revoke returned no row");
+  return row.revoked_at;
+}
+
+/** Appends the lock-out audit row; target is the founder wallet (lowercase), actor is the admin. */
+export async function insertRevokeAudit(
+  db: Db,
+  actorUserId: string,
+  founderWallet: string,
+  before: RepoStatus,
+  ip: string | null
+): Promise<void> {
+  await db.query(
+    `INSERT INTO app.audit_log (actor_user_id, action, target, before_value, after_value, ip)
+     VALUES ($1, 'repo.revoke', $2, $3, 'revoked', $4)`,
+    [actorUserId, founderWallet, before, ip]
   );
 }
 

@@ -7,10 +7,13 @@ import { buildRepoName } from "./repoNaming.js";
 import type { CollaboratorResult, CreatedRepo, RepoProvider } from "./repoProvider.js";
 import { getRepoProvider } from "./repoProviderRegistry.js";
 import {
+  findRepoForUpdate,
   findUnlinkedRepo,
   insertProvisionAudit,
   insertRepo,
+  insertRevokeAudit,
   lockUser,
+  markRevoked,
   updateCollaborator,
   type Db,
   type RepoRecord,
@@ -133,10 +136,49 @@ async function runLocked(
       status,
       projectId: null,
       createdAt: new Date(),
+      revokedAt: null,
     },
     created: true,
     failure,
   };
+}
+
+async function revokeLocked(db: Db, id: string, actorUserId: string, ip: string | null, provider: RepoProvider | null): Promise<RepoRecord> {
+  const repo = await findRepoForUpdate(db, id);
+  if (!repo) throw new AppError(404, "Not found");
+  if (repo.status === "revoked") return repo;
+  if (!provider) throw new AppError(503, "Repository provisioning is not configured", true);
+  await provider.removeCollaborator(repo.repoName, repo.founderLogin);
+  const revokedAt = await markRevoked(db, id);
+  await insertRevokeAudit(db, actorUserId, repo.founderWallet, repo.status, ip);
+  return { ...repo, status: "revoked", revokedAt };
+}
+
+/**
+ * Admin lock-out: removes the founder's GitHub access (and any pending invite) and marks the repo
+ * revoked. One transaction holding the row lock; a provider failure rolls back, leaving the row and
+ * audit log unchanged. Already revoked repos return as is, with no provider call or audit row.
+ */
+export async function revokeRepoAccess(
+  id: string,
+  actorUserId: string,
+  ip: string | null,
+  provider: RepoProvider | null = getRepoProvider()
+): Promise<RepoRecord> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    try {
+      const repo = await revokeLocked(client, id, actorUserId, ip, provider);
+      await client.query("COMMIT");
+      return repo;
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw err;
+    }
+  } finally {
+    client.release();
+  }
 }
 
 function toIdText(result: CollaboratorResult): string | null {

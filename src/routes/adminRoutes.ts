@@ -11,7 +11,7 @@ import {
   postComplianceResolve,
   postComplianceShutdown,
 } from "../controllers/adminController.js";
-import { getAdminRepos } from "../controllers/repoController.js";
+import { getAdminRepos, postRevokeRepo } from "../controllers/repoController.js";
 import { getUserProfileForStaff } from "../controllers/profileController.js";
 import { getAdminComplaints, patchAdminComplaint } from "../controllers/complaintController.js";
 import { validate } from "../middlewares/validate.js";
@@ -27,7 +27,7 @@ import {
   roleBodySchema,
   roleParamsSchema,
 } from "../schemas/adminSchemas.js";
-import { adminReposQuerySchema } from "../schemas/repoSchemas.js";
+import { adminReposQuerySchema, revokeRepoBodySchema, revokeRepoParamsSchema } from "../schemas/repoSchemas.js";
 import { complaintIdParamsSchema, complaintsQuerySchema, complaintStatusBodySchema } from "../schemas/complaintSchemas.js";
 
 /** Builds the admin router; ONE limiter instance guards the role-change write route. */
@@ -121,6 +121,15 @@ export function createAdminRoutes(writeLimiter: RequestHandler): Router {
     patchUserRole
   );
 
+  router.post(
+    "/repos/:id/revoke",
+    writeLimiter,
+    requireSameOrigin,
+    requireAuth,
+    requireRole("admin"),
+    validate({ params: revokeRepoParamsSchema, body: revokeRepoBodySchema }),
+    postRevokeRepo
+  );
   router.post(
     "/compliance/:projectId/resolve",
     writeLimiter,

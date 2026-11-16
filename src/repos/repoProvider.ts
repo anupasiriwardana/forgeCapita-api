@@ -19,5 +19,7 @@ export interface RepoProvider {
   userExists(login: string): Promise<boolean>;
   createRepo(name: string): Promise<CreatedRepo>;
   addCollaborator(repoName: string, login: string): Promise<CollaboratorResult>;
+  /** Removes the collaborator and cancels a pending invitation; an already absent user counts as success. */
+  removeCollaborator(repoName: string, login: string): Promise<void>;
   protectDefaultBranch?(repoName: string, branch: string): Promise<void>;
 }

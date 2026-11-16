@@ -17,7 +17,8 @@ export interface ReconcileResult {
 /**
  * ONE statement: locks attached drafts whose project is indexed with a matching developer
  * (SKIP LOCKED), inserts the profile unless one already exists (any unique violation counts as
- * a conflict), moves each draft to applied or conflict, and writes the audit rows.
+ * a conflict), moves each draft to applied or conflict, links the founder's unlinked repo (if any)
+ * to the applied project, and writes the audit rows.
  * The payload keys map to the same columns as projectRepository.upsertProfile.
  */
 function reconcileSql(): string {
@@ -48,7 +49,13 @@ function reconcileSql(): string {
       UPDATE app.launch_drafts d SET status = 'applied', applied_at = now(), updated_at = now()
       FROM due
       WHERE d.id = due.id AND due.project_id IN (SELECT project_id FROM inserted)
-      RETURNING d.id, d.user_id, d.wallet_address
+      RETURNING d.id, d.user_id, d.wallet_address, d.project_id
+    ),
+    linked AS (
+      UPDATE app.project_repos r SET project_id = a.project_id, updated_at = now()
+      FROM applied a
+      WHERE r.user_id = a.user_id AND r.project_id IS NULL
+      RETURNING r.user_id, r.project_id
     ),
     conflicted AS (
       UPDATE app.launch_drafts d SET status = 'conflict', updated_at = now()
@@ -59,6 +66,12 @@ function reconcileSql(): string {
     audit_applied AS (
       INSERT INTO app.audit_log (action, actor_user_id, target, before_value, after_value, ip)
       SELECT 'launch_draft.apply', a.user_id, a.wallet_address, 'attached', 'applied', NULL FROM applied a
+      RETURNING id
+    ),
+    audit_link AS (
+      INSERT INTO app.audit_log (action, actor_user_id, target, before_value, after_value, ip)
+      SELECT 'repo.link', l.user_id, a.wallet_address, 'unlinked', 'linked', NULL
+      FROM linked l JOIN applied a ON a.user_id = l.user_id AND a.project_id = l.project_id
       RETURNING id
     ),
     audit_conflict AS (
