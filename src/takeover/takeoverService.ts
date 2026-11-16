@@ -38,6 +38,7 @@ import {
   buildVoteMessage,
   isNewerVote,
   parseIssuedAt,
+  voteMessageTemplate,
   type VoteChoice,
 } from "./takeoverMessages.js";
 import { decideResult, isInCooldown, isQuorumReached, quorumWeightRequired } from "./takeoverTally.js";
@@ -308,18 +309,25 @@ export async function acceptCandidate(
   });
 }
 
-/** Voter must be a snapshot staker other than the developer under takeover and the candidate; returns the weight. */
-export function assertVoterEligible(input: {
+interface EligibilityInput {
   voter: string;
   developerAtOpen: string | null;
   candidateWallet: string;
   weight: bigint | null;
-}): bigint {
-  if (input.voter === input.developerAtOpen || input.voter === input.candidateWallet) {
-    throw new AppError(403, "Not eligible");
-  }
-  if (input.weight === null || input.weight <= 0n) throw new AppError(403, "Not eligible");
+}
+
+/** The voting weight of an eligible voter (snapshot staker other than the developer under takeover and the candidate), else null. */
+export function voterEligibility(input: EligibilityInput): bigint | null {
+  if (input.voter === input.developerAtOpen || input.voter === input.candidateWallet) return null;
+  if (input.weight === null || input.weight <= 0n) return null;
   return input.weight;
+}
+
+/** Voter must be eligible (see voterEligibility); returns the weight, 403 otherwise. */
+export function assertVoterEligible(input: EligibilityInput): bigint {
+  const weight = voterEligibility(input);
+  if (weight === null) throw new AppError(403, "Not eligible");
+  return weight;
 }
 
 async function closeLocked(db: Db, current: TakeoverCase, actorUserId: string | null, ip: string | null): Promise<TakeoverCase> {
@@ -421,6 +429,39 @@ export async function readPublicTally(caseId: string): Promise<TallyView> {
   const found = await findCase(caseId);
   if (!found || (found.status !== "vote_open" && found.status !== "closed")) throw new AppError(404, "Not found");
   return loadTally(await refreshIfDue(found));
+}
+
+export interface MyVoteView {
+  eligible: boolean;
+  canVote: boolean;
+  /** Snapshot weight as a decimal string; null when not eligible. */
+  weight: string | null;
+  myChoice: VoteChoice | null;
+  voteMessageTemplate: string | null;
+}
+
+/** The caller's own voting state for an opened case. Never returns the stored message, signature or any other voter's data. */
+export async function readMyVoteView(user: AuthUser, caseId: string, now: Date = new Date()): Promise<MyVoteView> {
+  const found = await findCase(caseId);
+  if (!found || (found.status !== "vote_open" && found.status !== "closed")) throw new AppError(404, "Not found");
+  const current = await refreshIfDue(found);
+  const canVote = current.status === "vote_open" && current.endsAt !== null && now < current.endsAt;
+  const voter = user.address.toLowerCase();
+  const weight = voterEligibility({
+    voter,
+    developerAtOpen: current.developerAtOpen,
+    candidateWallet: current.candidateWallet,
+    weight: await findSnapshotWeight(pool, current.id, voter),
+  });
+  const stored = await findVote(pool, current.id, voter);
+  return {
+    eligible: weight !== null,
+    canVote,
+    weight: weight === null ? null : weight.toString(),
+    myChoice: stored === null ? null : stored.choice,
+    voteMessageTemplate:
+      weight !== null && canVote ? voteMessageTemplate(current.id, current.projectId, user.address) : null,
+  };
 }
 
 export interface CastVoteResult {

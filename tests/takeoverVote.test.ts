@@ -24,7 +24,7 @@ const { envSchema } = await import("../src/config/env.js");
 const { signatureMatches } = await import("../src/auth/siwe.js");
 const { decideResult, isInCooldown, isQuorumReached, quorumWeightRequired } = await import("../src/takeover/takeoverTally.js");
 const { buildAcceptanceMessage, buildVoteMessage, isNewerVote, parseIssuedAt } = await import("../src/takeover/takeoverMessages.js");
-const { assertVoterEligible } = await import("../src/takeover/takeoverService.js");
+const { assertVoterEligible } =await import("../src/takeover/takeoverService.js");
 const { voteBodySchema } = await import("../src/takeover/takeoverSchemas.js");
 
 const app = createApp();
@@ -291,6 +291,84 @@ describe("route guards and status matrix", () => {
       advisory: true,
     });
     expect(JSON.stringify(res.body)).not.toMatch(/voter_address|"voter"|signature|message/);
+  });
+
+  describe("my-vote", () => {
+    const url = `${BASE}/${CASE_ID}/my-vote`;
+    const sessionWallet = Wallet.createRandom().address;
+    const closedRow = caseRow({ status: "closed", result: "no_quorum", yes_weight: "0", no_weight: "0", voted_weight: "0", voter_count: 0, closed_at: new Date() });
+    const get = (...responses: unknown[]) => {
+      mockSession(mockQuery, "investor", sessionWallet, ...responses);
+      return request(app).get(url).set("Cookie", SESSION_COOKIE_HEADER);
+    };
+    const storedVote = found({
+      voter_address: sessionWallet.toLowerCase(),
+      choice: "NO",
+      weight: "5",
+      issued_at: new Date(),
+      updated_at: new Date(),
+      message: "secret text",
+      signature: SIG,
+    });
+
+    it("401 without a session and 404 for prepared, cancelled and unknown cases", async () => {
+      expect((await request(app).get(url)).status).toBe(401);
+      for (const status of ["prepared", "cancelled"]) {
+        expect((await get(found(caseRow({ status })))).status).toBe(404);
+      }
+      expect((await get(OK)).status).toBe(404);
+    });
+
+    it("eligible staker: weight, own choice and the template; no signature or message, no-store", async () => {
+      const res = await get(found(caseRow()), found({ staked_balance: "5" }), storedVote);
+      expect(res.status).toBe(200);
+      expect(res.headers["cache-control"]).toBe("no-store");
+      const view = res.body.data.myVote;
+      expect(view).toMatchObject({ eligible: true, canVote: true, weight: "5", myChoice: "NO" });
+      const template: string = view.voteMessageTemplate;
+      expect(template).toContain("Choice: {choice}");
+      expect(template).toContain("Issued At: {issuedAt}");
+      expect(template).toContain(`Wallet: ${sessionWallet}`);
+      expect(template).toContain(`Case: ${CASE_ID}`);
+      expect(template).toContain(`Project: 421614:${WALLET}`);
+      const issuedAt = "2026-01-01T00:00:00.000Z";
+      expect(template.replace("{choice}", "YES").replace("{issuedAt}", issuedAt)).toBe(
+        buildVoteMessage({ caseId: CASE_ID, projectId: `421614:${WALLET}`, choice: "YES", wallet: sessionWallet, issuedAt })
+      );
+      expect(JSON.stringify(res.body)).not.toMatch(/signature|message"|secret text/);
+    });
+
+    it("not eligible for non-holders, the developer at open, the candidate and weight 0", async () => {
+      const sessionLower = sessionWallet.toLowerCase();
+      const cases: [Record<string, unknown>, unknown][] = [
+        [{}, OK],
+        [{ developer_at_open: sessionLower }, found({ staked_balance: "5" })],
+        [{ candidate_wallet: sessionLower }, found({ staked_balance: "5" })],
+        [{}, found({ staked_balance: "0" })],
+      ];
+      for (const [overrides, weightRow] of cases) {
+        const res = await get(found(caseRow(overrides)), weightRow, OK);
+        expect(res.status).toBe(200);
+        expect(res.body.data.myVote).toEqual({ eligible: false, canVote: true, weight: null, myChoice: null, voteMessageTemplate: null });
+      }
+    });
+
+    it("canVote is false for a closed case and after endsAt", async () => {
+      const closed = await get(found(closedRow), found({ staked_balance: "5" }), OK);
+      expect(closed.status).toBe(200);
+      expect(closed.body.data.myVote).toMatchObject({ eligible: true, canVote: false, voteMessageTemplate: null });
+      const past = found(caseRow({ ends_at: new Date(Date.now() - 1000) }));
+      const ended = await get(past, found({ staked_balance: "5" }), OK);
+      expect(ended.body.data.myVote).toMatchObject({ eligible: true, canVote: false, voteMessageTemplate: null });
+    });
+  });
+
+  it("by-project DTO exposes the case id and still no per-address data", async () => {
+    mockQuery.mockResolvedValueOnce(found(caseRow())).mockResolvedValueOnce(found({ yes: "0", no: "0", count: "0" }));
+    const res = await request(app).get(`${BASE}/by-project/421614/${WALLET}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.case.id).toBe(CASE_ID);
+    expect(JSON.stringify(res.body)).not.toMatch(/holders|voter_address|signature|message/);
   });
 
   it("staff routes: votes are staff or admin only and close is admin only", async () => {

@@ -3,6 +3,7 @@ import { requireAuth, requireSameOrigin } from "../auth/middleware.js";
 import {
   getCaseByProject,
   getMyCases,
+  getMyVote,
   getTally,
   postAcceptCase,
   postVote,
@@ -20,6 +21,7 @@ export function createTakeoverRoutes(writeLimiter: RequestHandler): Router {
   router.get("/mine", requireAuth, getMyCases);
   router.get("/by-project/:chainId/:address", validate({ params: byProjectParamsSchema }), getCaseByProject);
   router.get("/:id/tally", validate({ params: caseIdParamsSchema }), getTally);
+  router.get("/:id/my-vote", requireAuth, validate({ params: caseIdParamsSchema }), getMyVote);
   router.post(
     "/:id/accept",
     writeLimiter,

@@ -29,6 +29,7 @@ import {
   loadTally,
   openCase,
   prepareCase,
+  readMyVoteView,
   readPublicTally,
   refreshIfDue,
   type TallyView,
@@ -81,6 +82,7 @@ function toStaffDto(c: TakeoverCase): Record<string, unknown> {
 /** Public view: minimal on purpose (no holders, no reason, no evidence, no staff ids, no per-address votes). */
 function toPublicDto(c: TakeoverCase, tally: TallyView): Record<string, unknown> {
   return {
+    id: c.id,
     snapshotBlock: c.snapshotBlock,
     holderCount: c.snapshotHolderCount,
     openedAt: iso(c.openedAt),
@@ -219,6 +221,19 @@ export async function getTally(_req: Request, res: Response, next: NextFunction)
   try {
     const { id } = validatedOf<CaseIdParams>(res, "params");
     res.status(200).json({ success: true, data: { tally: await readPublicTally(id) } } satisfies ApiResponse);
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** The caller's own voting state (eligibility, weight, own choice, message template); never signatures or other voters. */
+export async function getMyVote(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    if (!req.user) throw new AppError(401, "Authentication required");
+    const { id } = validatedOf<CaseIdParams>(res, "params");
+    const myVote = await readMyVoteView(req.user, id);
+    res.setHeader("Cache-Control", "no-store");
+    res.status(200).json({ success: true, data: { myVote } } satisfies ApiResponse);
   } catch (err) {
     next(err);
   }

@@ -8,7 +8,7 @@ export type VoteChoice = "YES" | "NO";
 export interface VoteMessageInput {
   caseId: string;
   projectId: string;
-  choice: VoteChoice;
+  choice: VoteChoice | "{choice}";
   wallet: string;
   issuedAt: string;
 }
@@ -35,6 +35,11 @@ export function buildVoteMessage(input: VoteMessageInput): string {
     `Wallet: ${getAddress(input.wallet)}`,
     `Issued At: ${input.issuedAt}`,
   ].join("\n");
+}
+
+/** The vote text with `{choice}` and `{issuedAt}` placeholders so the frontend builds the same text. */
+export function voteMessageTemplate(caseId: string, projectId: string, wallet: string): string {
+  return buildVoteMessage({ caseId, projectId, wallet, choice: "{choice}", issuedAt: "{issuedAt}" });
 }
 
 export function buildAcceptanceMessage(input: AcceptanceMessageInput): string {
