@@ -1,5 +1,5 @@
 import { config } from "../config/env.js";
-import { pool } from "../db/pool.js";
+import { AUTOEXEC_LOCK_ID, withTransactionLock } from "../db/advisoryLock.js";
 import { logger } from "../logger.js";
 import { toLoggableError } from "../middlewares/errorHandler.js";
 import { escrowInterface, readView, relayChains, type RelayChain } from "./chains.js";
@@ -13,8 +13,7 @@ import {
 } from "./relayRepository.js";
 import { simulate } from "./relayService.js";
 
-/** Advisory lock id so overlapping instances never run the job at the same time. */
-export const AUTOEXEC_LOCK_ID = 727361003;
+export { AUTOEXEC_LOCK_ID };
 const BATCH_SIZE = 50;
 /** Seconds past the voting end before acting, absorbing clock skew and indexer lag. */
 const END_MARGIN_S = 15n;
@@ -105,29 +104,18 @@ async function processChain(chain: RelayChain): Promise<void> {
 
 let inFlight: Promise<void> | null = null;
 
-/** One scheduled pass under a session advisory lock; never throws. */
+/** One scheduled pass under a transaction advisory lock; never throws. */
 export async function runAutoExecOnce(): Promise<void> {
   try {
-    const client = await pool.connect();
-    try {
-      const lock = await client.query<{ locked: boolean }>("SELECT pg_try_advisory_lock($1::bigint) AS locked", [
-        AUTOEXEC_LOCK_ID,
-      ]);
-      if (lock.rows[0]?.locked !== true) return;
-      try {
-        for (const chain of relayChains()) {
-          try {
-            await processChain(chain);
-          } catch (err) {
-            logger.error({ chainId: chain.chainId, err: toLoggableError(err) }, "milestone auto-execution failed");
-          }
+    await withTransactionLock(AUTOEXEC_LOCK_ID, "milestone-autoexec", async () => {
+      for (const chain of relayChains()) {
+        try {
+          await processChain(chain);
+        } catch (err) {
+          logger.error({ chainId: chain.chainId, err: toLoggableError(err) }, "milestone auto-execution failed");
         }
-      } finally {
-        await client.query("SELECT pg_advisory_unlock($1::bigint)", [AUTOEXEC_LOCK_ID]);
       }
-    } finally {
-      client.release();
-    }
+    });
   } catch (err) {
     logger.error({ err: toLoggableError(err) }, "milestone auto-execution run failed");
   }

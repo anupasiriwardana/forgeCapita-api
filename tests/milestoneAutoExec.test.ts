@@ -128,7 +128,7 @@ function installDb(overrides: Partial<DbState> = {}): DbState {
     const text = String(sql);
     const values = (params ?? []) as unknown[];
     db.statements.push({ sql: text, params: values });
-    if (text.includes("pg_try_advisory_lock")) return rows({ locked: true });
+    if (text.includes("pg_try_advisory_xact_lock")) return rows({ locked: true });
     if (text.includes('"ponder"."milestone"')) return rows(...db.candidates);
     if (text.includes("SELECT status, error_code, created_at")) return rows(...db.history);
     if (text.includes("INSERT INTO app.relay_requests")) {

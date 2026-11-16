@@ -1,12 +1,11 @@
 import { config, type AppConfig } from "../config/env.js";
-import { pool } from "../db/pool.js";
+import { GAS_LOCK_ID, withTransactionLock } from "../db/advisoryLock.js";
 import { logger } from "../logger.js";
 import { toLoggableError } from "../middlewares/errorHandler.js";
 import { GAS_CHAIN_IDS, hasGasRpc, readGasPrice } from "./gasOracle.js";
 import { insertGasSample, pruneGasSamples } from "./gasRepository.js";
 
-/** Advisory lock id so overlapping instances never sample at the same time. */
-export const GAS_LOCK_ID = 727361006;
+export { GAS_LOCK_ID };
 const RETENTION_HOURS = 48;
 
 export type GasJobSettings = Pick<AppConfig, "NODE_ENV" | "GAS_SAMPLE_INTERVAL_MS">;
@@ -27,27 +26,16 @@ async function sampleChain(chainId: number): Promise<void> {
   }
 }
 
-/** One scheduled pass under a session advisory lock; never throws. */
+/** One scheduled pass under a transaction advisory lock; never throws. */
 export async function runGasOnce(): Promise<void> {
   try {
-    const client = await pool.connect();
-    try {
-      const lock = await client.query<{ locked: boolean }>("SELECT pg_try_advisory_lock($1::bigint) AS locked", [
-        GAS_LOCK_ID,
-      ]);
-      if (lock.rows[0]?.locked !== true) return;
-      try {
-        for (const chainId of GAS_CHAIN_IDS) {
-          if (stopping) break;
-          if (hasGasRpc(chainId)) await sampleChain(chainId);
-        }
-        await pruneGasSamples(RETENTION_HOURS);
-      } finally {
-        await client.query("SELECT pg_advisory_unlock($1::bigint)", [GAS_LOCK_ID]);
+    await withTransactionLock(GAS_LOCK_ID, "gas-sampler", async () => {
+      for (const chainId of GAS_CHAIN_IDS) {
+        if (stopping) break;
+        if (hasGasRpc(chainId)) await sampleChain(chainId);
       }
-    } finally {
-      client.release();
-    }
+      await pruneGasSamples(RETENTION_HOURS);
+    });
   } catch (err) {
     logger.error({ err: toLoggableError(err) }, "gas job run failed");
   }

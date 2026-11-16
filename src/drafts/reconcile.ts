@@ -1,10 +1,10 @@
 import { config } from "../config/env.js";
+import { RECONCILE_LOCK_ID, withTransactionLock } from "../db/advisoryLock.js";
 import { pool, qualified } from "../db/pool.js";
 import { logger } from "../logger.js";
 import { toLoggableError } from "../middlewares/errorHandler.js";
 
-/** Advisory lock id so overlapping instances never run the job at the same time. */
-export const RECONCILE_LOCK_ID = 727361002;
+export { RECONCILE_LOCK_ID };
 const BATCH_SIZE = 50;
 const PENDING_TTL = "7 days";
 
@@ -107,26 +107,15 @@ export async function reconcileDrafts(options: { draftId?: string } = {}): Promi
 
 let inFlight: Promise<void> | null = null;
 
-/** One scheduled run under a session advisory lock; never throws. */
+/** One scheduled run under a transaction advisory lock; never throws. */
 export async function runReconcileOnce(): Promise<void> {
   try {
-    const client = await pool.connect();
-    try {
-      const lock = await client.query<{ locked: boolean }>("SELECT pg_try_advisory_lock($1::bigint) AS locked", [
-        RECONCILE_LOCK_ID,
-      ]);
-      if (lock.rows[0]?.locked !== true) return;
-      try {
-        const outcome = await reconcileDrafts();
-        if (outcome.applied + outcome.conflicts + outcome.expired > 0) {
-          logger.info(outcome, "launch drafts reconciled");
-        }
-      } finally {
-        await client.query("SELECT pg_advisory_unlock($1::bigint)", [RECONCILE_LOCK_ID]);
+    await withTransactionLock(RECONCILE_LOCK_ID, "reconcile", async () => {
+      const outcome = await reconcileDrafts();
+      if (outcome.applied + outcome.conflicts + outcome.expired > 0) {
+        logger.info(outcome, "launch drafts reconciled");
       }
-    } finally {
-      client.release();
-    }
+    });
   } catch (err) {
     logger.error({ err: toLoggableError(err) }, "launch draft reconcile failed");
   }

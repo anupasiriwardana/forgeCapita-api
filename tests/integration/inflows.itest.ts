@@ -11,6 +11,7 @@ import {
   writeCursor,
 } from "../../src/audit/inflowRepository.js";
 import { hashSessionToken } from "../../src/auth/session.js";
+import { withTransactionLock } from "../../src/db/advisoryLock.js";
 import {
   addr,
   bootstrapDatabase,
@@ -209,9 +210,7 @@ describe("runInflowOnce", () => {
     );
     expect(cursors.rows).toHaveLength(6);
     expect(cursors.rows.every((r) => r.last_error === "explorer is not configured")).toBe(true);
-    const lock = await pool.query<{ locked: boolean }>("SELECT pg_try_advisory_lock($1::bigint) AS locked", [INFLOW_LOCK_ID]);
-    expect(lock.rows[0]?.locked).toBe(true);
-    await pool.query("SELECT pg_advisory_unlock($1::bigint)", [INFLOW_LOCK_ID]);
+    await expect(withTransactionLock(INFLOW_LOCK_ID, "inflow-test", async () => undefined)).resolves.toBe(true);
   });
 });
 

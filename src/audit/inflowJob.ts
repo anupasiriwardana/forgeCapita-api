@@ -1,12 +1,11 @@
 import { config, type AppConfig } from "../config/env.js";
-import { pool } from "../db/pool.js";
+import { INFLOW_LOCK_ID, withTransactionLock } from "../db/advisoryLock.js";
 import { logger } from "../logger.js";
 import { toLoggableError } from "../middlewares/errorHandler.js";
 import { ExplorerError, fetchInflows, type InflowKind } from "./explorerClient.js";
 import { insertInflows, listAuditWallets, readCursor, writeCursor, type AuditWallet } from "./inflowRepository.js";
 
-/** Advisory lock id so overlapping instances never poll the explorer at the same time. */
-export const INFLOW_LOCK_ID = 727361004;
+export { INFLOW_LOCK_ID };
 const BATCH_SIZE = 50;
 /** Blocks re-read before the cursor so a shallow reorg cannot hide a transfer. */
 const REORG_MARGIN = 20n;
@@ -57,27 +56,16 @@ async function processWallet(wallet: AuditWallet): Promise<void> {
 
 let inFlight: Promise<void> | null = null;
 
-/** One scheduled pass under a session advisory lock; never throws. */
+/** One scheduled pass under a transaction advisory lock; never throws. */
 export async function runInflowOnce(): Promise<void> {
   try {
-    const client = await pool.connect();
-    try {
-      const lock = await client.query<{ locked: boolean }>("SELECT pg_try_advisory_lock($1::bigint) AS locked", [
-        INFLOW_LOCK_ID,
-      ]);
-      if (lock.rows[0]?.locked !== true) return;
-      try {
-        const wallets = await listAuditWallets(config.REVENUE_AUDIT_CHAINS, BATCH_SIZE);
-        for (const wallet of wallets) {
-          if (stopping) break;
-          await processWallet(wallet);
-        }
-      } finally {
-        await client.query("SELECT pg_advisory_unlock($1::bigint)", [INFLOW_LOCK_ID]);
+    await withTransactionLock(INFLOW_LOCK_ID, "inflow", async () => {
+      const wallets = await listAuditWallets(config.REVENUE_AUDIT_CHAINS, BATCH_SIZE);
+      for (const wallet of wallets) {
+        if (stopping) break;
+        await processWallet(wallet);
       }
-    } finally {
-      client.release();
-    }
+    });
   } catch (err) {
     logger.error({ err: toLoggableError(err) }, "inflow run failed");
   }

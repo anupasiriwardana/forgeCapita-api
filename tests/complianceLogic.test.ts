@@ -63,7 +63,7 @@ describe("startComplianceJob", () => {
   };
 
   it("uses its own advisory lock id", () => {
-    expect(COMPLIANCE_LOCK_ID).toBe(727361005);
+    expect(COMPLIANCE_LOCK_ID).toBe(727361105);
   });
 
   it("is null under test, when disabled, or without the key", () => {

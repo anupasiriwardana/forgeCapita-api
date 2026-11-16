@@ -1,5 +1,5 @@
 import { config, type AppConfig } from "../config/env.js";
-import { pool } from "../db/pool.js";
+import { COMPLIANCE_LOCK_ID, withTransactionLock } from "../db/advisoryLock.js";
 import { logger } from "../logger.js";
 import { toLoggableError } from "../middlewares/errorHandler.js";
 import { computeShortfall, WINDOW_DAYS } from "./complianceLogic.js";
@@ -12,12 +12,7 @@ import {
   type CheckableProject,
 } from "./complianceRepository.js";
 
-/**
- * Advisory lock registry (one id per background job so overlapping instances never double-run):
- * 727361004 = inflow job (inflowJob.ts), 727361005 = compliance job (this file),
- * 727361006 = gas sampler (gas/gasJob.ts).
- */
-export const COMPLIANCE_LOCK_ID = 727361005;
+export { COMPLIANCE_LOCK_ID };
 
 export type ComplianceSettings = Pick<
   AppConfig,
@@ -48,33 +43,22 @@ export async function checkProject(project: CheckableProject, toleranceBps: numb
 
 let inFlight: Promise<void> | null = null;
 
-/** One scheduled pass under a session advisory lock; never throws. */
+/** One scheduled pass under a transaction advisory lock; never throws. */
 export async function runComplianceOnce(
   chainIds: readonly number[] = config.REVENUE_AUDIT_CHAINS,
   toleranceBps: number = config.REVENUE_TOLERANCE_BPS
 ): Promise<void> {
   try {
-    const client = await pool.connect();
-    try {
-      const lock = await client.query<{ locked: boolean }>("SELECT pg_try_advisory_lock($1::bigint) AS locked", [
-        COMPLIANCE_LOCK_ID,
-      ]);
-      if (lock.rows[0]?.locked !== true) return;
-      try {
-        for (const project of await listCheckableProjects(chainIds)) {
-          if (stopping) break;
-          try {
-            await checkProject(project, toleranceBps);
-          } catch (err) {
-            logger.error({ projectId: project.projectId, err: toLoggableError(err) }, "compliance check failed");
-          }
+    await withTransactionLock(COMPLIANCE_LOCK_ID, "compliance", async () => {
+      for (const project of await listCheckableProjects(chainIds)) {
+        if (stopping) break;
+        try {
+          await checkProject(project, toleranceBps);
+        } catch (err) {
+          logger.error({ projectId: project.projectId, err: toLoggableError(err) }, "compliance check failed");
         }
-      } finally {
-        await client.query("SELECT pg_advisory_unlock($1::bigint)", [COMPLIANCE_LOCK_ID]);
       }
-    } finally {
-      client.release();
-    }
+    });
   } catch (err) {
     logger.error({ err: toLoggableError(err) }, "compliance run failed");
   }

@@ -231,7 +231,7 @@ describe("inflow job", () => {
   };
 
   it("uses the reserved advisory lock id", () => {
-    expect(INFLOW_LOCK_ID).toBe(727361004);
+    expect(INFLOW_LOCK_ID).toBe(727361104);
   });
 
   it("is not started under NODE_ENV=test", () => {
