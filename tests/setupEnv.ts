@@ -16,3 +16,7 @@ process.env["PROFILE_RATE_LIMIT_MAX"] = "100000";
 process.env["AUTH_RATE_LIMIT_MAX"] = "100000";
 // Address of the well-known test key 0x00..01 (tests/auth.test.ts signs with it).
 process.env["ADMIN_WALLETS"] = "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf";
+// Assigned empty (not deleted) so the real env file can never point tests at a live indexer.
+for (const name of ["INDEXER_URL", "TAKEOVER_MAX_LAG_SECONDS", "TAKEOVER_QUORUM_PERCENT", "TAKEOVER_VOTE_DAYS", "TAKEOVER_COOLDOWN_DAYS"]) {
+  process.env[name] = "";
+}

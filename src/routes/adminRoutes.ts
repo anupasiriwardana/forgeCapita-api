@@ -12,6 +12,22 @@ import {
   postComplianceShutdown,
 } from "../controllers/adminController.js";
 import { getAdminRepos, postRevokeRepo } from "../controllers/repoController.js";
+import {
+  getCaseDetail,
+  getCaseVotes,
+  getCases,
+  postCancelCase,
+  postCloseCase,
+  postOpenCase,
+  postPrepareCase,
+} from "../controllers/takeoverController.js";
+import {
+  caseDetailQuerySchema,
+  caseIdParamsSchema,
+  emptyBodySchema,
+  listCasesQuerySchema,
+  prepareCaseBodySchema,
+} from "../takeover/takeoverSchemas.js";
 import { getUserProfileForStaff } from "../controllers/profileController.js";
 import { getAdminComplaints, patchAdminComplaint } from "../controllers/complaintController.js";
 import { validate } from "../middlewares/validate.js";
@@ -147,6 +163,66 @@ export function createAdminRoutes(writeLimiter: RequestHandler): Router {
     requireRole("admin", "staff"),
     validate({ params: complianceActionParamsSchema, body: complianceActionBodySchema }),
     postComplianceShutdown
+  );
+
+  router.get(
+    "/takeover-cases",
+    requireAuth,
+    requireRole("admin", "staff"),
+    validate({ query: listCasesQuerySchema }),
+    getCases
+  );
+  router.get(
+    "/takeover-cases/:id",
+    requireAuth,
+    requireRole("admin", "staff"),
+    validate({ params: caseIdParamsSchema, query: caseDetailQuerySchema }),
+    getCaseDetail
+  );
+  router.post(
+    "/takeover-cases",
+    writeLimiter,
+    requireSameOrigin,
+    requireAuth,
+    requireRole("admin", "staff"),
+    validate({ body: prepareCaseBodySchema }),
+    postPrepareCase
+  );
+  // Opening (snapshot) and cancelling are ADMIN ONLY; staff may only prepare.
+  router.post(
+    "/takeover-cases/:id/open",
+    writeLimiter,
+    requireSameOrigin,
+    requireAuth,
+    requireRole("admin"),
+    validate({ params: caseIdParamsSchema, body: emptyBodySchema }),
+    postOpenCase
+  );
+  router.get(
+    "/takeover-cases/:id/votes",
+    requireAuth,
+    requireRole("admin", "staff"),
+    validate({ params: caseIdParamsSchema, query: caseDetailQuerySchema }),
+    getCaseVotes
+  );
+  // Closing after the window has elapsed is ADMIN ONLY (idempotent; early termination is cancel).
+  router.post(
+    "/takeover-cases/:id/close",
+    writeLimiter,
+    requireSameOrigin,
+    requireAuth,
+    requireRole("admin"),
+    validate({ params: caseIdParamsSchema, body: emptyBodySchema }),
+    postCloseCase
+  );
+  router.post(
+    "/takeover-cases/:id/cancel",
+    writeLimiter,
+    requireSameOrigin,
+    requireAuth,
+    requireRole("admin"),
+    validate({ params: caseIdParamsSchema, body: emptyBodySchema }),
+    postCancelCase
   );
 
   return router;

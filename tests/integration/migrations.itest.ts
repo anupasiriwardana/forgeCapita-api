@@ -45,6 +45,9 @@ describe("migrations on an empty database", () => {
       "schema_migrations",
       "sessions",
       "startup_profiles",
+      "takeover_cases",
+      "takeover_snapshot_holders",
+      "takeover_votes",
       "user_profiles",
       "users",
     ]);

@@ -61,6 +61,16 @@ const PONDER_STUBS = `
     is_failed            boolean NOT NULL DEFAULT false,
     failed_at            numeric(78)
   );
+  CREATE TABLE ponder.position (
+    id             text PRIMARY KEY,
+    chain_id       integer NOT NULL,
+    project        text NOT NULL,
+    investor       text NOT NULL,
+    staked_balance numeric(78) NOT NULL,
+    yield_claimed  numeric(78) NOT NULL DEFAULT 0,
+    tokens_held    numeric(78) NOT NULL DEFAULT 0,
+    tokens_claimed numeric(78) NOT NULL DEFAULT 0
+  );
   CREATE TABLE ponder.revenue_record (
     id             text PRIMARY KEY,
     chain_id       integer NOT NULL,
@@ -109,7 +119,7 @@ export async function resetData(): Promise<void> {
     await client.query("BEGIN");
     await client.query("ALTER TABLE app.audit_log DISABLE TRIGGER USER");
     await client.query(
-      `TRUNCATE app.audit_log, app.project_repos, app.user_profiles, app.complaints, app.compliance_cases, ponder.revenue_record, app.inflow_records, app.inflow_cursors, app.gas_samples, app.relay_requests, app.launch_drafts, app.startup_profiles,
+      `TRUNCATE app.audit_log, app.takeover_votes, app.takeover_snapshot_holders, app.takeover_cases, ponder.position, app.project_repos, app.user_profiles, app.complaints, app.compliance_cases, ponder.revenue_record, app.inflow_records, app.inflow_cursors, app.gas_samples, app.relay_requests, app.launch_drafts, app.startup_profiles,
          app.founder_wallets, app.agreement_acceptances, app.founder_applications,
          app.sessions, app.auth_nonces, app.users, ponder.project, ponder.milestone`
     );
@@ -206,6 +216,20 @@ export async function insertPonderProject(p: StubProject): Promise<string> {
     ]
   );
   return id;
+}
+
+/** Inserts a ponder.position row (project = ponder project id). */
+export async function insertPonderPosition(
+  projectId: string,
+  chainId: number,
+  investor: string,
+  staked: string,
+  tokensHeld = "0"
+): Promise<void> {
+  await pool.query(
+    "INSERT INTO ponder.position (id, chain_id, project, investor, staked_balance, tokens_held) VALUES ($1, $2, $3, $4, $5, $6)",
+    [`${projectId}:${investor}`, chainId, projectId, investor, staked, tokensHeld]
+  );
 }
 
 export interface StubMilestone {

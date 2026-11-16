@@ -32,3 +32,7 @@ process.env["MINIMUM_GOAL_MODE"] = "test";
 for (const name of ["GITHUB_APP_ID", "GITHUB_APP_INSTALLATION_ID", "GITHUB_APP_PRIVATE_KEY_BASE64", "GITHUB_ORG", "REPO_BRANCH_PROTECTION"]) {
   process.env[name] = "";
 }
+// Same for the takeover indexer settings: empty so the real env file cannot reach a live indexer.
+for (const name of ["INDEXER_URL", "TAKEOVER_MAX_LAG_SECONDS", "TAKEOVER_QUORUM_PERCENT", "TAKEOVER_VOTE_DAYS", "TAKEOVER_COOLDOWN_DAYS"]) {
+  process.env[name] = "";
+}

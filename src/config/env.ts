@@ -165,6 +165,23 @@ export const envSchema = z
     GITHUB_ORG: emptyAsUndefined(z.string().regex(GITHUB_LOGIN_PATTERN, "must be a GitHub login").optional()),
     // Branch protection on the default branch of new repos; only the exact value "true" enables it.
     REPO_BRANCH_PROTECTION: emptyAsUndefined(z.enum(["true", "false"]).optional()).transform((value) => value === "true"),
+    // Internal base URL of the indexer (e.g. http://indexer:42069; http is allowed on the docker network).
+    // Unset = opening a takeover vote fails closed with 503.
+    INDEXER_URL: emptyAsUndefined(
+      z
+        .string()
+        .trim()
+        .url()
+        .refine((value) => /^https?:\/\//i.test(value), "must be an http(s) URL")
+        .transform((value) => value.replace(/\/+$/, ""))
+        .optional()
+    ),
+    // Maximum indexer lag (seconds) allowed when freezing a takeover stake snapshot.
+    TAKEOVER_MAX_LAG_SECONDS: emptyAsUndefined(z.coerce.number().int().min(30).max(86_400).default(300)),
+    // Takeover vote (advisory): quorum as a percentage of the snapshot total staked, voting window, cooldown after a failed case.
+    TAKEOVER_QUORUM_PERCENT: emptyAsUndefined(z.coerce.number().int().min(1).max(100).default(20)),
+    TAKEOVER_VOTE_DAYS: emptyAsUndefined(z.coerce.number().int().min(1).max(90).default(7)),
+    TAKEOVER_COOLDOWN_DAYS: emptyAsUndefined(z.coerce.number().int().min(0).max(365).default(30)),
     AUTH_DOMAIN: z
       .string()
       .trim()
