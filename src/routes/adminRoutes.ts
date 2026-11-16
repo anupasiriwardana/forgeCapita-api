@@ -18,6 +18,7 @@ import {
   getCases,
   postCancelCase,
   postCloseCase,
+  postHandover,
   postOpenCase,
   postPrepareCase,
 } from "../controllers/takeoverController.js";
@@ -25,6 +26,7 @@ import {
   caseDetailQuerySchema,
   caseIdParamsSchema,
   emptyBodySchema,
+  handoverBodySchema,
   listCasesQuerySchema,
   prepareCaseBodySchema,
 } from "../takeover/takeoverSchemas.js";
@@ -214,6 +216,15 @@ export function createAdminRoutes(writeLimiter: RequestHandler): Router {
     requireRole("admin"),
     validate({ params: caseIdParamsSchema, body: emptyBodySchema }),
     postCloseCase
+  );
+  router.post(
+    "/takeover-cases/:id/handover",
+    writeLimiter,
+    requireSameOrigin,
+    requireAuth,
+    requireRole("admin"),
+    validate({ params: caseIdParamsSchema, body: handoverBodySchema }),
+    postHandover
   );
   router.post(
     "/takeover-cases/:id/cancel",

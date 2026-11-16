@@ -138,6 +138,28 @@ export async function findRepoForUpdate(db: Db, id: string): Promise<RepoRecord 
   return row ? toRecord(row) : null;
 }
 
+/** The project's latest repo that is not failed (invited, active or revoked); read-only. */
+export async function findProjectRepo(db: Db, projectId: string): Promise<RepoRecord | null> {
+  const result = await db.query<RepoRow>(
+    `SELECT ${COLUMNS} FROM app.project_repos r JOIN app.users u ON u.id = r.user_id
+     WHERE r.project_id = $1 AND r.collaborator_status <> 'failed' ORDER BY r.created_at DESC LIMIT 1`,
+    [projectId]
+  );
+  const row = result.rows[0];
+  return row ? toRecord(row) : null;
+}
+
+/** Same as findProjectRepo, but locks the row for the rest of the transaction. */
+export async function findProjectRepoForUpdate(db: Db, projectId: string): Promise<RepoRecord | null> {
+  const result = await db.query<RepoRow>(
+    `SELECT ${COLUMNS} FROM app.project_repos r JOIN app.users u ON u.id = r.user_id
+     WHERE r.project_id = $1 AND r.collaborator_status <> 'failed' ORDER BY r.created_at DESC LIMIT 1 FOR UPDATE OF r`,
+    [projectId]
+  );
+  const row = result.rows[0];
+  return row ? toRecord(row) : null;
+}
+
 /** Marks the repo revoked and returns the stored timestamp. */
 export async function markRevoked(db: Db, id: string): Promise<Date> {
   const result = await db.query<{ revoked_at: Date }>(

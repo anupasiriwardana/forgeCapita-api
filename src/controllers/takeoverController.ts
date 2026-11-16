@@ -2,16 +2,21 @@ import type { NextFunction, Request, Response } from "express";
 import { AppError } from "../errors.js";
 import type { ValidatedRequest } from "../middlewares/validate.js";
 import { getAddress } from "ethers";
+import { pool } from "../db/pool.js";
+import { findProjectRepo } from "../repos/repoRepository.js";
+import { handoverRepository } from "../takeover/takeoverHandover.js";
 import type {
   AcceptBody,
   ByProjectParams,
   CaseDetailQuery,
   CaseIdParams,
+  HandoverBody,
   ListCasesQuery,
   PrepareCaseBody,
   VoteBody,
 } from "../takeover/takeoverSchemas.js";
 import {
+  findCandidateLoginSuggestion,
   findCase,
   findPublicCase,
   listCases,
@@ -21,6 +26,7 @@ import {
   type TakeoverCase,
 } from "../takeover/takeoverRepository.js";
 import { acceptanceMessageTemplate } from "../takeover/takeoverMessages.js";
+import { loadCandidateExecution, loadExecution } from "../takeover/takeoverExecution.js";
 import {
   acceptCandidate,
   cancelCase,
@@ -123,6 +129,25 @@ export async function postCancelCase(req: Request, res: Response, next: NextFunc
   }
 }
 
+export async function postHandover(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    if (!req.user) throw new AppError(401, "Authentication required");
+    const { id } = validatedOf<CaseIdParams>(res, "params");
+    const { githubLogin } = validatedOf<HandoverBody>(res, "body");
+    const result = await handoverRepository(id, githubLogin, req.user.id, req.ip ?? null);
+    res.status(200).json({
+      success: true,
+      data: {
+        handover: { githubLogin: result.githubLogin, status: result.status, handedOverAt: result.handedOverAt.toISOString() },
+        repo: { id: result.repo.id, fullName: result.repo.fullName, htmlUrl: result.repo.htmlUrl, status: result.repo.status },
+        alreadyHandedOver: result.alreadyHandedOver,
+      },
+    } satisfies ApiResponse);
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function getCases(_req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { status, chainId, limit, offset } = validatedOf<ListCasesQuery>(res, "query");
@@ -145,9 +170,35 @@ export async function getCaseDetail(_req: Request, res: Response, next: NextFunc
     if (!found) throw new AppError(404, "Not found");
     const fresh = await refreshIfDue(found);
     const holders = await listHolders(id, limit, offset);
+    const execution = await loadExecution(fresh);
+    const [repo, suggestedGithubLogin] = await Promise.all([
+      findProjectRepo(pool, fresh.projectId),
+      findCandidateLoginSuggestion(fresh.candidateUserId),
+    ]);
+    const handover =
+      fresh.handoverStatus === null || fresh.newDeveloperGithubLogin === null || fresh.handedOverAt === null
+        ? null
+        : {
+            githubLogin: fresh.newDeveloperGithubLogin,
+            status: fresh.handoverStatus,
+            handedOverAt: fresh.handedOverAt.toISOString(),
+            handedOverBy: fresh.handedOverBy,
+          };
     res.status(200).json({
       success: true,
-      data: { case: toStaffDto(fresh), holders: { items: holders, limit, offset } },
+      data: {
+        case: {
+          ...toStaffDto(fresh),
+          execution,
+          repo:
+            repo === null
+              ? null
+              : { id: repo.id, fullName: repo.fullName, htmlUrl: repo.htmlUrl, status: repo.status, founderLogin: repo.founderLogin },
+          handover,
+          suggestedGithubLogin,
+        },
+        holders: { items: holders, limit, offset },
+      },
     } satisfies ApiResponse);
   } catch (err) {
     next(err);
@@ -183,16 +234,23 @@ export async function getMyCases(req: Request, res: Response, next: NextFunction
   try {
     if (!req.user) throw new AppError(401, "Authentication required");
     const { address } = req.user;
-    const items = (await listCasesForCandidate(req.user.id)).map((c) => ({
-      id: c.id,
-      projectId: c.projectId,
-      status: c.status,
-      acceptedAt: iso(c.candidateAcceptedAt),
-      acceptMessage:
-        c.status === "prepared" && c.candidateAcceptedAt === null
-          ? acceptanceMessageTemplate(c.id, c.projectId, getAddress(address))
-          : null,
-    }));
+    const cases = await listCasesForCandidate(req.user.id);
+    const withExecution = await Promise.all(cases.map(async (c) => ({ c, execution: await loadCandidateExecution(c) })));
+    const items = withExecution
+      .filter(({ c, execution }) => c.status !== "closed" || execution.state === "proposed")
+      .map(({ c, execution }) => ({
+        id: c.id,
+        projectId: c.projectId,
+        chainId: c.chainId,
+        candidateWallet: c.candidateWallet,
+        status: c.status,
+        acceptedAt: iso(c.candidateAcceptedAt),
+        acceptMessage:
+          c.status === "prepared" && c.candidateAcceptedAt === null
+            ? acceptanceMessageTemplate(c.id, c.projectId, getAddress(address))
+            : null,
+        execution,
+      }));
     res.status(200).json({ success: true, data: { items } } satisfies ApiResponse);
   } catch (err) {
     next(err);

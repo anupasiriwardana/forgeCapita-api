@@ -38,7 +38,15 @@ export interface TakeoverCase {
   quorumPercent: number | null;
   /** DB clock at read time: the voting window has elapsed (false for legacy cases without ends_at). */
   votingEnded: boolean;
+  /** Repository handover (WS-11.4d-2); the invitation id is never selected into this model. */
+  newDeveloperGithubLogin: string | null;
+  handoverStatus: HandoverStatus | null;
+  handoverRepoId: string | null;
+  handedOverAt: Date | null;
+  handedOverBy: string | null;
 }
+
+export type HandoverStatus = "invited" | "active";
 
 export interface SnapshotHolder {
   investorAddress: string;
@@ -99,6 +107,11 @@ interface CaseRow {
   voter_count: number | null;
   quorum_percent: number | null;
   voting_ended: boolean;
+  new_developer_github_login?: string | null;
+  handover_status?: HandoverStatus | null;
+  handover_repo_id?: string | null;
+  handed_over_at?: Date | null;
+  handed_over_by?: string | null;
 }
 
 const CASE_COLUMNS = `id, chain_id, project_id, candidate_wallet, candidate_user_id, reason, evidence_links, status,
@@ -106,7 +119,8 @@ const CASE_COLUMNS = `id, chain_id, project_id, candidate_wallet, candidate_user
   snapshot_block_timestamp, snapshot_taken_at, snapshot_lag_seconds, snapshot_total_staked::text AS snapshot_total_staked,
   snapshot_holder_count, candidate_accepted_at, developer_at_open, ends_at, closed_at, result,
   yes_weight::text AS yes_weight, no_weight::text AS no_weight, voted_weight::text AS voted_weight, voter_count,
-  quorum_percent, (ends_at IS NOT NULL AND ends_at <= now()) AS voting_ended`;
+  quorum_percent, (ends_at IS NOT NULL AND ends_at <= now()) AS voting_ended, new_developer_github_login,
+  handover_status, handover_repo_id, handed_over_at, handed_over_by`;
 
 function toCase(row: CaseRow): TakeoverCase {
   return {
@@ -140,6 +154,11 @@ function toCase(row: CaseRow): TakeoverCase {
     voterCount: row.voter_count,
     quorumPercent: row.quorum_percent,
     votingEnded: row.voting_ended,
+    newDeveloperGithubLogin: row.new_developer_github_login ?? null,
+    handoverStatus: row.handover_status ?? null,
+    handoverRepoId: row.handover_repo_id ?? null,
+    handedOverAt: row.handed_over_at ?? null,
+    handedOverBy: row.handed_over_by ?? null,
   };
 }
 
@@ -440,6 +459,49 @@ export async function markAccepted(
   );
 }
 
+/** The candidate's latest GitHub login from their own provisioned repos (a prefill suggestion), or null. */
+export async function findCandidateLoginSuggestion(userId: string): Promise<string | null> {
+  const result = await pool.query<{ founder_login: string }>(
+    "SELECT founder_login FROM app.project_repos WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+    [userId]
+  );
+  return result.rows[0]?.founder_login ?? null;
+}
+
+/** First handover: records the login, status and repo. The status can later be refreshed (see updateHandoverStatus). */
+export async function markHandedOver(
+  db: Db,
+  id: string,
+  githubLogin: string,
+  status: HandoverStatus,
+  collaboratorId: number | null,
+  repoId: string,
+  actorUserId: string
+): Promise<Date> {
+  const result = await db.query<{ handed_over_at: Date }>(
+    `UPDATE app.takeover_cases SET new_developer_github_login = $2, handover_status = $3,
+       handover_collaborator_id = $4::bigint, handover_repo_id = $5, handed_over_at = now(), handed_over_by = $6
+     WHERE id = $1 RETURNING handed_over_at`,
+    [id, githubLogin, status, collaboratorId === null ? null : String(collaboratorId), repoId, actorUserId]
+  );
+  const row = result.rows[0];
+  if (!row) throw new Error("takeover handover update returned no row");
+  return row.handed_over_at;
+}
+
+/** Retry of an invited handover: refreshes status and invitation id only. */
+export async function updateHandoverStatus(
+  db: Db,
+  id: string,
+  status: HandoverStatus,
+  collaboratorId: number | null
+): Promise<void> {
+  await db.query(
+    "UPDATE app.takeover_cases SET handover_status = $2, handover_collaborator_id = $3::bigint WHERE id = $1",
+    [id, status, collaboratorId === null ? null : String(collaboratorId)]
+  );
+}
+
 /** Latest close time of a failed or no_quorum case of the project (passed and cancelled cases are ignored). */
 export async function findLastFailedCloseAt(db: Db, projectId: string): Promise<Date | null> {
   const result = await db.query<{ closed_at: Date | null }>(
@@ -450,10 +512,49 @@ export async function findLastFailedCloseAt(db: Db, projectId: string): Promise<
   return result.rows[0]?.closed_at ?? null;
 }
 
+/** One indexed developer_change row (bigint columns read as text). */
+export interface DeveloperChangeRow {
+  kind: "proposed" | "accepted";
+  newDeveloper: string;
+  txFrom: string;
+  txHash: string;
+  blockNumber: string;
+  /** Unix seconds. */
+  timestamp: bigint;
+}
+
+/** Indexed developer_change rows of a project, newest first. Hex columns are lowercased here. */
+export async function listDeveloperChanges(db: Db, projectId: string): Promise<DeveloperChangeRow[]> {
+  const result = await db.query<{
+    kind: "proposed" | "accepted";
+    new_developer: string;
+    tx_from: string;
+    tx_hash: string;
+    block_number: string;
+    timestamp: string;
+  }>(
+    `SELECT kind, new_developer, tx_from, tx_hash, block_number::text AS block_number, timestamp::text AS timestamp
+     FROM ${qualified("developer_change")} WHERE project_id = $1 ORDER BY timestamp DESC, block_number DESC LIMIT 200`,
+    [projectId]
+  );
+  return result.rows.map((row) => ({
+    kind: row.kind,
+    newDeveloper: row.new_developer.toLowerCase(),
+    txFrom: row.tx_from.toLowerCase(),
+    txHash: row.tx_hash.toLowerCase(),
+    blockNumber: row.block_number,
+    timestamp: BigInt(row.timestamp),
+  }));
+}
+
+/**
+ * Candidate's cases: prepared/vote_open, plus closed cases (the nomination state is checked by the
+ * caller against the indexed developer_change rows).
+ */
 export async function listCasesForCandidate(userId: string): Promise<TakeoverCase[]> {
   const result = await pool.query<CaseRow>(
     `SELECT ${CASE_COLUMNS} FROM app.takeover_cases
-     WHERE candidate_user_id = $1 AND status IN ('prepared', 'vote_open') ORDER BY created_at DESC LIMIT 50`,
+     WHERE candidate_user_id = $1 AND status IN ('prepared', 'vote_open', 'closed') ORDER BY created_at DESC LIMIT 50`,
     [userId]
   );
   return result.rows.map(toCase);

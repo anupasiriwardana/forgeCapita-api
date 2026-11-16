@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { GITHUB_LOGIN_PATTERN } from "../config/env.js";
 import { intParam } from "../schemas/founderSchemas.js";
 
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
@@ -69,6 +70,10 @@ export const voteBodySchema = z
   .object({ choice: z.enum(["YES", "NO"]), issuedAt: issuedAtSchema, signature: signatureSchema })
   .strict();
 
+export const handoverBodySchema = z
+  .object({ githubLogin: z.string().trim().regex(GITHUB_LOGIN_PATTERN, "Invalid GitHub username") })
+  .strict();
+
 export const byProjectParamsSchema = z
   .object({
     chainId: z
@@ -83,6 +88,7 @@ export const byProjectParamsSchema = z
 export type PrepareCaseBody = z.output<typeof prepareCaseBodySchema>;
 export type AcceptBody = z.output<typeof acceptBodySchema>;
 export type VoteBody = z.output<typeof voteBodySchema>;
+export type HandoverBody = z.output<typeof handoverBodySchema>;
 export type CaseIdParams= z.output<typeof caseIdParamsSchema>;
 export type ListCasesQuery = z.output<typeof listCasesQuerySchema>;
 export type CaseDetailQuery = z.output<typeof caseDetailQuerySchema>;
