@@ -81,7 +81,7 @@ Run `npm run migrate` for migration 006 (`app.founder_applications`; one open `p
 
 | Endpoint | Access | Purpose |
 |---|---|---|
-| `POST /api/v1/applications` `{projectName,summary,websiteUrl,pitchDeckUrl,repoUrl?,contact?}` | `investor`, `founder` | Submit (`201`; `409` if an open application exists). URLs must be https; `repoUrl` must be github.com or gitlab.com |
+| `POST /api/v1/applications` `{resumeUrl,about,linkedinUrl?,githubUrl?,portfolioUrl?,otherLinks?,kycDocsUrl,kycNote?}` | `investor`, `founder` | Submit (`201`; `409` if an open application exists). URLs must be https; at least one of LinkedIn/GitHub/portfolio; `githubUrl` is a profile, not a repository. Migration 024 |
 | `GET /api/v1/applications/mine` | signed in | Caller's latest application or `null` |
 | `GET /api/v1/admin/applications?status&limit&offset` | `admin`, `staff` | Paged list; `{items,total,limit,offset}` |
 | `GET /api/v1/admin/applications/:id` | `admin`, `staff` | One application (includes reviewer ids) |

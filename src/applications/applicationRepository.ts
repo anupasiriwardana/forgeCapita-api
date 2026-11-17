@@ -4,12 +4,12 @@ import type { ApplicationRecord, ApplicationStatus, ReviewOutcome } from "./appl
 export interface NewApplication {
   userId: string;
   walletAddress: string;
-  projectName: string;
-  summary: string;
-  websiteUrl: string;
-  pitchDeckUrl: string;
-  repoUrl: string | undefined;
-  contact: string | undefined;
+  resumeUrl: string;
+  about: string;
+  linkedinUrl: string | undefined;
+  githubUrl: string | undefined;
+  portfolioUrl: string | undefined;
+  otherLinks: string[] | undefined;
   kycDocsUrl: string;
   kycNote: string | undefined;
 }
@@ -18,10 +18,16 @@ interface ApplicationRow {
   id: string;
   user_id: string;
   wallet_address: string;
-  project_name: string;
-  summary: string;
-  website_url: string;
-  pitch_deck_url: string;
+  resume_url: string | null;
+  about: string | null;
+  linkedin_url: string | null;
+  github_url: string | null;
+  portfolio_url: string | null;
+  other_links: string[] | null;
+  project_name: string | null;
+  summary: string | null;
+  website_url: string | null;
+  pitch_deck_url: string | null;
   repo_url: string | null;
   contact: string | null;
   kyc_docs_url: string | null;
@@ -45,7 +51,8 @@ interface ReviewRow {
   role_changed: boolean;
 }
 
-const APPLICATION_COLUMNS = `id, user_id, wallet_address, project_name, summary, website_url,
+const APPLICATION_COLUMNS = `id, user_id, wallet_address, resume_url, about, linkedin_url, github_url,
+  portfolio_url, other_links, project_name, summary, website_url,
   pitch_deck_url, repo_url, contact, kyc_docs_url, kyc_note, status, review_note, reviewed_by, reviewed_at,
   kyc_verified_at, kyc_verified_by, created_at, updated_at`;
 
@@ -54,6 +61,12 @@ function toRecord(row: ApplicationRow): ApplicationRecord {
     id: row.id,
     userId: row.user_id,
     walletAddress: row.wallet_address,
+    resumeUrl: row.resume_url,
+    about: row.about,
+    linkedinUrl: row.linkedin_url,
+    githubUrl: row.github_url,
+    portfolioUrl: row.portfolio_url,
+    otherLinks: row.other_links,
     projectName: row.project_name,
     summary: row.summary,
     websiteUrl: row.website_url,
@@ -88,18 +101,19 @@ function toOutcome(row: ReviewRow): ReviewOutcome {
 export async function insertApplication(input: NewApplication): Promise<ApplicationRecord> {
   const result = await pool.query<ApplicationRow>(
     `INSERT INTO app.founder_applications
-       (user_id, wallet_address, project_name, summary, website_url, pitch_deck_url, repo_url, contact, kyc_docs_url, kyc_note)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       (user_id, wallet_address, resume_url, about, linkedin_url, github_url, portfolio_url, other_links,
+        kyc_docs_url, kyc_note)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::text[], $9, $10)
      RETURNING ${APPLICATION_COLUMNS}`,
     [
       input.userId,
       input.walletAddress,
-      input.projectName,
-      input.summary,
-      input.websiteUrl,
-      input.pitchDeckUrl,
-      input.repoUrl ?? null,
-      input.contact ?? null,
+      input.resumeUrl,
+      input.about,
+      input.linkedinUrl ?? null,
+      input.githubUrl ?? null,
+      input.portfolioUrl ?? null,
+      input.otherLinks && input.otherLinks.length > 0 ? input.otherLinks : null,
       input.kycDocsUrl,
       input.kycNote ?? null,
     ]

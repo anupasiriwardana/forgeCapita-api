@@ -19,10 +19,16 @@ interface FakeApp {
   id: string;
   user_id: string;
   wallet_address: string;
-  project_name: string;
-  summary: string;
-  website_url: string;
-  pitch_deck_url: string;
+  resume_url: string | null;
+  about: string | null;
+  linkedin_url: string | null;
+  github_url: string | null;
+  portfolio_url: string | null;
+  other_links: string[] | null;
+  project_name: string | null;
+  summary: string | null;
+  website_url: string | null;
+  pitch_deck_url: string | null;
   repo_url: string | null;
   contact: string | null;
   kyc_docs_url: string | null;
@@ -179,12 +185,18 @@ const mockQuery = jest.fn(async (sql: unknown, params?: unknown) => {
       id: `aaaaaaaa-0000-4000-8000-${String(apps.length + 1).padStart(12, "0")}`,
       user_id: p[0] as string,
       wallet_address: p[1] as string,
-      project_name: p[2] as string,
-      summary: p[3] as string,
-      website_url: p[4] as string,
-      pitch_deck_url: p[5] as string,
-      repo_url: p[6] as string | null,
-      contact: p[7] as string | null,
+      resume_url: p[2] as string,
+      about: p[3] as string,
+      linkedin_url: p[4] as string | null,
+      github_url: p[5] as string | null,
+      portfolio_url: p[6] as string | null,
+      other_links: p[7] as string[] | null,
+      project_name: null,
+      summary: null,
+      website_url: null,
+      pitch_deck_url: null,
+      repo_url: null,
+      contact: null,
       kyc_docs_url: p[8] as string | null,
       kyc_note: p[9] as string | null,
       status: "pending",
@@ -236,13 +248,14 @@ const applicantWallet = new Wallet("0x" + "00".repeat(31) + "03");
 const otherWallet = new Wallet("0x" + "00".repeat(31) + "04");
 
 const ORIGIN = "http://localhost:3000";
+const ABOUT = "I have built and shipped subscription software for six years and want to launch my own.";
 const VALID_BODY = {
-  projectName: "  Acme SaaS ",
-  summary: "A subscription product.",
-  websiteUrl: "https://acme.example.com",
-  pitchDeckUrl: "https://acme.example.com/deck.pdf",
-  repoUrl: "https://github.com/acme/app",
-  contact: "founder@acme.example.com",
+  resumeUrl: "https://drive.google.com/file/d/1resume/view?usp=sharing",
+  about: `  ${ABOUT} `,
+  linkedinUrl: "https://www.linkedin.com/in/jane-doe/",
+  githubUrl: "https://github.com/jane-doe",
+  portfolioUrl: "https://behance.net/janedoe",
+  otherLinks: ["https://example.com/talk"],
   kycDocsUrl: "https://drive.google.com/drive/folders/1AbC?usp=sharing",
   kycNote: "Passport and utility bill",
 };
@@ -312,12 +325,49 @@ describe("RBAC", () => {
 });
 
 describe("validation", () => {
-  it("rejects bad URLs, repo hosts, extra keys and oversize strings", async () => {
+  const LINKS_OMITTED = { linkedinUrl: undefined, githubUrl: undefined, portfolioUrl: undefined };
+
+  it("accepts any single profile link and all of them", async () => {
+    const cookie = await signIn(applicantWallet);
+    const variants: Array<Record<string, unknown>> = [
+      { ...VALID_BODY, ...LINKS_OMITTED, linkedinUrl: "https://de.linkedin.com/in/jane" },
+      { ...VALID_BODY, ...LINKS_OMITTED, githubUrl: "https://github.com/jane-doe/" },
+      { ...VALID_BODY, ...LINKS_OMITTED, portfolioUrl: "https://dribbble.com/jane" },
+      VALID_BODY,
+    ];
+    for (const body of variants) {
+      expect((await submit(cookie, body)).status).toBe(201);
+      apps.length = 0;
+    }
+  });
+
+  it("rejects bad URLs, profile mismatches, extra keys and oversize strings", async () => {
     const cookie = await signIn(applicantWallet);
     const bad: Array<Record<string, unknown>> = [
-      { ...VALID_BODY, websiteUrl: "http://acme.example.com" },
-      { ...VALID_BODY, pitchDeckUrl: "javascript:alert(1)" },
-      { ...VALID_BODY, repoUrl: "https://bitbucket.org/acme/app" },
+      { ...VALID_BODY, ...LINKS_OMITTED },
+      { ...VALID_BODY, resumeUrl: undefined },
+      { ...VALID_BODY, about: undefined },
+      { ...VALID_BODY, about: "x".repeat(49) },
+      { ...VALID_BODY, about: "x".repeat(1501) },
+      { ...VALID_BODY, resumeUrl: "http://drive.google.com/x" },
+      { ...VALID_BODY, resumeUrl: "https://u:p@drive.google.com/x" },
+      { ...VALID_BODY, resumeUrl: "https://drive.google.com/a b" },
+      { ...VALID_BODY, resumeUrl: `https://drive.google.com/${"x".repeat(500)}` },
+      { ...VALID_BODY, linkedinUrl: "http://www.linkedin.com/in/jane" },
+      { ...VALID_BODY, linkedinUrl: "https://example.com/in/jane" },
+      { ...VALID_BODY, linkedinUrl: "https://www.linkedin.com/company/acme" },
+      { ...VALID_BODY, githubUrl: "https://github.com/jane/repo" },
+      { ...VALID_BODY, githubUrl: "https://gitlab.com/jane" },
+      { ...VALID_BODY, portfolioUrl: "javascript:alert(1)" },
+      { ...VALID_BODY, otherLinks: ["https://a.example", "https://b.example", "https://c.example", "https://d.example"] },
+      { ...VALID_BODY, otherLinks: ["ftp://a.example"] },
+      { ...VALID_BODY, otherLinks: [`https://a.example/${"x".repeat(300)}`] },
+      { ...VALID_BODY, projectName: "Acme" },
+      { ...VALID_BODY, summary: "A product" },
+      { ...VALID_BODY, websiteUrl: "https://acme.example.com" },
+      { ...VALID_BODY, pitchDeckUrl: "https://acme.example.com/deck.pdf" },
+      { ...VALID_BODY, repoUrl: "https://github.com/acme/app" },
+      { ...VALID_BODY, contact: "founder@acme.example.com" },
       { ...VALID_BODY, extra: true },
       { ...VALID_BODY, kycDocsUrl: undefined },
       { ...VALID_BODY, kycDocsUrl: "javascript:alert(1)" },
@@ -327,9 +377,6 @@ describe("validation", () => {
       { ...VALID_BODY, kycDocsUrl: `https://drive.google.com/${"x".repeat(500)}` },
       { ...VALID_BODY, kycDocsUrl: "https://drive.google.com/a b" },
       { ...VALID_BODY, kycNote: "x".repeat(501) },
-      { ...VALID_BODY, projectName: "x".repeat(81) },
-      { ...VALID_BODY, summary: "x".repeat(1001) },
-      { ...VALID_BODY, websiteUrl: `https://acme.example.com/${"x".repeat(300)}` },
     ];
     for (const body of bad) expect((await submit(cookie, body)).status).toBe(400);
     expect(apps).toHaveLength(0);
@@ -343,16 +390,23 @@ describe("submit and read", () => {
     expect(created.status).toBe(201);
     expect(created.body.data.application).not.toHaveProperty("kycDocsUrl");
     expect(created.body.data.application).not.toHaveProperty("kycNote");
-    expect(apps[0]).toMatchObject({ project_name: "Acme SaaS", status: "pending" });
+    expect(created.body.data.application).not.toHaveProperty("resumeUrl");
+    expect(apps[0]).toMatchObject({ about: ABOUT, status: "pending", project_name: null });
 
     const mine = await request(app).get("/api/v1/applications/mine").set("Cookie", cookie);
     expect(mine.status).toBe(200);
     expect(mine.headers["cache-control"]).toBe("no-store");
     expect(mine.body.data.application).toMatchObject({
-      projectName: "Acme SaaS",
-      contact: "founder@acme.example.com",
+      about: ABOUT,
+      linkedinUrl: VALID_BODY.linkedinUrl,
+      githubUrl: VALID_BODY.githubUrl,
+      portfolioUrl: VALID_BODY.portfolioUrl,
+      otherLinks: VALID_BODY.otherLinks,
+      projectName: null,
+      repoUrl: null,
       status: "pending",
     });
+    expect(mine.body.data.application).not.toHaveProperty("resumeUrl");
     expect(mine.body.data.application).not.toHaveProperty("reviewedBy");
     expect(mine.body.data.application).not.toHaveProperty("kycDocsUrl");
     expect(mine.body.data.application).not.toHaveProperty("kycNote");
@@ -378,7 +432,12 @@ describe("submit and read", () => {
     const list = await request(app).get("/api/v1/admin/applications?status=pending").set("Cookie", adminCookie);
     expect(list.status).toBe(200);
     expect(list.body.data).toMatchObject({ total: 1, limit: 20, offset: 0 });
-    expect(list.body.data.items[0]).toMatchObject({ kycDocsUrl: VALID_BODY.kycDocsUrl, kycNote: VALID_BODY.kycNote });
+    expect(list.body.data.items[0]).toMatchObject({
+      resumeUrl: VALID_BODY.resumeUrl,
+      kycDocsUrl: VALID_BODY.kycDocsUrl,
+      kycNote: VALID_BODY.kycNote,
+      about: ABOUT,
+    });
     const one = await request(app).get(`/api/v1/admin/applications/${id}`).set("Cookie", adminCookie);
     expect(one.body.data.application).toHaveProperty("reviewedBy", null);
     expect(one.body.data.application).toMatchObject({ kycDocsUrl: VALID_BODY.kycDocsUrl });

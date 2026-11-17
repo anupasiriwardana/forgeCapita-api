@@ -1,12 +1,6 @@
 import { z } from "zod";
 
 const STATUSES = ["pending", "approved", "rejected"] as const;
-const REPO_HOSTS: ReadonlySet<string> = new Set([
-  "github.com",
-  "www.github.com",
-  "gitlab.com",
-  "www.gitlab.com",
-]);
 
 function parseUrl(value: string): URL | null {
   try {
@@ -27,31 +21,53 @@ function httpsUrlWithMax(max: number): z.ZodType<string> {
     }, "Must be an https URL");
 }
 
-const httpsUrl = httpsUrlWithMax(300);
-
 /** KYC documents link: https only, no credentials, no whitespace (a CHECK mirrors this in the database). */
 const kycDocsUrl = httpsUrlWithMax(500).refine(
   (value) => /^https:\/\/[^\s/?#@]+([/?#]\S*)?$/.test(value),
   "Must be an https URL"
 );
 
-const repoUrl = httpsUrl.refine((value) => {
+/** Generic https link without whitespace (portfolio and other links). */
+const looseHttpsUrl = httpsUrlWithMax(300).refine(
+  (value) => /^https:\/\/[^\s/?#@]+([/?#]\S*)?$/.test(value),
+  "Must be an https URL"
+);
+
+const LINKEDIN_HOST = /^(www\.|[a-z]{2}\.)?linkedin\.com$/;
+
+const linkedinUrl = looseHttpsUrl.refine((value) => {
   const url = parseUrl(value);
-  return url !== null && REPO_HOSTS.has(url.hostname);
-}, "Must be a github.com or gitlab.com URL");
+  if (url === null || !LINKEDIN_HOST.test(url.hostname)) return false;
+  return /^\/in\/[^/]+\/?$/.test(url.pathname);
+}, "Must be a LinkedIn profile URL (linkedin.com/in/...)");
+
+const githubUrl = looseHttpsUrl.refine((value) => {
+  const url = parseUrl(value);
+  if (url === null || (url.hostname !== "github.com" && url.hostname !== "www.github.com")) return false;
+  return /^\/[A-Za-z0-9-]+\/?$/.test(url.pathname);
+}, "Must be a GitHub profile URL (github.com/username)");
 
 export const createApplicationBodySchema = z
   .object({
-    projectName: z.string().trim().min(1).max(80),
-    summary: z.string().trim().min(1).max(1000),
-    websiteUrl: httpsUrl,
-    pitchDeckUrl: httpsUrl,
+    resumeUrl: kycDocsUrl,
+    about: z.string().trim().min(50).max(1500),
+    linkedinUrl: linkedinUrl.optional(),
+    githubUrl: githubUrl.optional(),
+    portfolioUrl: looseHttpsUrl.optional(),
+    otherLinks: z.array(looseHttpsUrl).max(3).optional(),
     kycDocsUrl,
     kycNote: z.string().trim().min(1).max(500).optional(),
-    repoUrl: repoUrl.optional(),
-    contact: z.string().trim().min(1).max(200).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((body, ctx) => {
+    if (!body.linkedinUrl && !body.githubUrl && !body.portfolioUrl) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["linkedinUrl"],
+        message: "Add at least one of LinkedIn, GitHub or portfolio",
+      });
+    }
+  });
 
 export const applicationIdParamsSchema = z
   .object({

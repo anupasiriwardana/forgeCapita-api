@@ -20,12 +20,12 @@ beforeEach(resetData);
 afterAll(closePool);
 
 const fields = {
-  projectName: "Acme",
-  summary: "A SaaS",
-  websiteUrl: "https://acme.example",
-  pitchDeckUrl: "https://acme.example/deck",
-  repoUrl: undefined,
-  contact: undefined,
+  resumeUrl: "https://drive.google.com/file/d/resume",
+  about: "I have built and shipped subscription software for six years and want to launch my own.",
+  linkedinUrl: "https://www.linkedin.com/in/jane",
+  githubUrl: undefined,
+  portfolioUrl: undefined,
+  otherLinks: undefined,
   kycDocsUrl: "https://drive.google.com/drive/folders/abc",
   kycNote: undefined,
 };
@@ -44,13 +44,26 @@ describe("founder applications", () => {
     }
   });
 
+  it("keeps a legacy application (old columns only) readable", async () => {
+    const user = await createUser(8);
+    await pool.query(
+      `INSERT INTO app.founder_applications (user_id, wallet_address, project_name, summary, website_url, pitch_deck_url, repo_url)
+       VALUES ($1, $2, 'Old', 'Old summary', 'https://old.example', 'https://old.example/deck', 'https://github.com/o/r')`,
+      [user.id, user.address]
+    );
+    const list = await listApplications("pending", 10, 0);
+    expect(list.items[0]).toMatchObject({ projectName: "Old", resumeUrl: null, about: null, otherLinks: null });
+    const found = await findApplicationById(list.items[0]?.id ?? "");
+    expect(found).toMatchObject({ websiteUrl: "https://old.example", repoUrl: "https://github.com/o/r" });
+  });
+
   it("submits a pending application and allows only one open application per wallet", async () => {
     const user = await createUser(1);
     const app = await submitApplication(user, fields);
-    expect(app).toMatchObject({ status: "pending", walletAddress: user.address, repoUrl: null });
+    expect(app).toMatchObject({ status: "pending", walletAddress: user.address, repoUrl: null, projectName: null });
     await expect(submitApplication(user, fields)).rejects.toMatchObject({ status: 409 });
     const found = await findApplicationById(app.id);
-    expect(found?.projectName).toBe("Acme");
+    expect(found).toMatchObject({ linkedinUrl: fields.linkedinUrl, otherLinks: null, resumeUrl: fields.resumeUrl });
     const list = await listApplications("pending", 10, 0);
     expect(list.total).toBe(1);
   });

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { listMigrations } from "../../src/db/migrationRunner.js";
-import { MIGRATIONS_DIR, bootstrapDatabase, closePool, migrationStatus, pool } from "./db.js";
+import { MIGRATIONS_DIR, bootstrapDatabase, closePool, createUser, migrationStatus, pool } from "./db.js";
 
 let first: string[] = [];
 let second: string[] = [];
@@ -73,6 +73,33 @@ describe("migrations on an empty database", () => {
     }
     const dropped = await pool.query("SELECT 1 FROM pg_indexes WHERE indexname = 'founder_wallets_open_user_idx'");
     expect(dropped.rowCount).toBe(0);
+  });
+
+  it("migration 024 CHECKs reject bad founder application profile values", async () => {
+    const user = await createUser(1);
+    const about = "x".repeat(60);
+    const base = { resume: "https://drive.google.com/r", about, linkedin: "https://www.linkedin.com/in/jane", github: null as string | null };
+    const attempt = async (over: Partial<typeof base>): Promise<unknown> => {
+      const v = { ...base, ...over };
+      try {
+        await pool.query(
+          `INSERT INTO app.founder_applications (user_id, wallet_address, resume_url, about, linkedin_url, github_url)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [user.id, user.address, v.resume, v.about, v.linkedin, v.github]
+        );
+        await pool.query("DELETE FROM app.founder_applications");
+        return null;
+      } catch (err) {
+        return (err as { constraint?: string }).constraint;
+      }
+    };
+    expect(await attempt({})).toBeNull();
+    expect(await attempt({ github: "https://github.com/jane/repo", linkedin: null as unknown as string })).toBe(
+      "founder_applications_github_url_format"
+    );
+    expect(await attempt({ about: null as unknown as string })).toBe("founder_applications_new_format_consistent");
+    expect(await attempt({ linkedin: null as unknown as string })).toBe("founder_applications_one_link_required");
+    expect(await attempt({ about: "short" })).toBe("founder_applications_about_length");
   });
 
   it("each migration file can be re-executed on the migrated schema (idempotent SQL)", async () => {

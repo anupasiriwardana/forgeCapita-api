@@ -25,11 +25,16 @@ function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
 
-/** Shape for the applicant (includes their own contact; no reviewer identity). */
+/** Shape for the applicant (includes their legacy fields; never the staff-only resume/KYC links or reviewer identity). */
 function toOwnerDto(a: ApplicationRecord): Record<string, unknown> {
   return {
     id: a.id,
     walletAddress: a.walletAddress,
+    about: a.about,
+    linkedinUrl: a.linkedinUrl,
+    githubUrl: a.githubUrl,
+    portfolioUrl: a.portfolioUrl,
+    otherLinks: a.otherLinks,
     projectName: a.projectName,
     summary: a.summary,
     websiteUrl: a.websiteUrl,
@@ -45,13 +50,14 @@ function toOwnerDto(a: ApplicationRecord): Record<string, unknown> {
   };
 }
 
-/** Shape for staff/admin: the owner shape plus user and reviewer ids and the staff-only KYC link. */
+/** Shape for staff/admin: the owner shape plus user and reviewer ids and the staff-only resume and KYC links. */
 function toStaffDto(a: ApplicationRecord): Record<string, unknown> {
   return {
     ...toOwnerDto(a),
     userId: a.userId,
     reviewedBy: a.reviewedBy,
     kycVerifiedBy: a.kycVerifiedBy,
+    resumeUrl: a.resumeUrl,
     kycDocsUrl: a.kycDocsUrl,
     kycNote: a.kycNote,
   };
@@ -62,12 +68,12 @@ export async function postApplication(req: Request, res: Response, next: NextFun
     if (!req.user) throw new AppError(401, "Authentication required");
     const body = validatedOf<CreateApplicationBody>(res, "body");
     const application = await submitApplication(req.user, {
-      projectName: body.projectName,
-      summary: body.summary,
-      websiteUrl: body.websiteUrl,
-      pitchDeckUrl: body.pitchDeckUrl,
-      repoUrl: body.repoUrl,
-      contact: body.contact,
+      resumeUrl: body.resumeUrl,
+      about: body.about,
+      linkedinUrl: body.linkedinUrl,
+      githubUrl: body.githubUrl,
+      portfolioUrl: body.portfolioUrl,
+      otherLinks: body.otherLinks,
       kycDocsUrl: body.kycDocsUrl,
       kycNote: body.kycNote,
     });
