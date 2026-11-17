@@ -13,6 +13,7 @@ import { startComplianceJob } from "./audit/complianceJob.js";
 import { startGasJob } from "./gas/gasJob.js";
 import { logGithubProvisioning } from "./repos/repoProviderRegistry.js";
 import { toLoggableError } from "./middlewares/errorHandler.js";
+import { isTransientNetworkError } from "./db/transientErrors.js";
 
 const app = createApp();
 
@@ -60,10 +61,18 @@ async function boot(): Promise<void> {
   const stopGas = startGasJob();
 
   process.on("unhandledRejection", (reason) => {
+    if (isTransientNetworkError(reason)) {
+      logger.error({ err: toLoggableError(reason) }, "transient network error, continuing");
+      return;
+    }
     logger.fatal({ err: reason }, "Unhandled promise rejection");
     process.exit(1);
   });
   process.on("uncaughtException", (err) => {
+    if (isTransientNetworkError(err)) {
+      logger.error({ err: toLoggableError(err) }, "transient network error, continuing");
+      return;
+    }
     logger.fatal({ err }, "Uncaught exception");
     process.exit(1);
   });

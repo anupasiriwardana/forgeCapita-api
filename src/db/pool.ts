@@ -1,5 +1,7 @@
 import { Pool } from "pg";
 import { config } from "../config/env.js";
+import { logger } from "../logger.js";
+import { toLoggableError } from "../middlewares/errorHandler.js";
 
 /**
  * Shared PostgreSQL connection pool.
@@ -10,6 +12,17 @@ export const pool = new Pool({
   ssl: {
     rejectUnauthorized: false,
   },
+});
+
+// An 'error' on a client with no listener becomes an uncaughtException. pg-pool removes its
+// own idle listener while a client is checked out, so keep a persistent one on every client.
+pool.on("error", (err) => {
+  logger.warn({ err: toLoggableError(err) }, "idle database client error, pool continues");
+});
+pool.on("connect", (client) => {
+  client.on("error", (err) => {
+    logger.warn({ err: toLoggableError(err) }, "database client error");
+  });
 });
 
 /**

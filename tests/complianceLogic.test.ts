@@ -4,7 +4,7 @@ import { jest, describe, it, expect } from "@jest/globals";
 import { readFileSync } from "node:fs";
 
 jest.mock("pg", () => ({
-  Pool: jest.fn().mockImplementation(() => ({ query: jest.fn(), connect: jest.fn(), end: jest.fn() })),
+  Pool: jest.fn().mockImplementation(() => ({ query: jest.fn(), connect: jest.fn(), end: jest.fn(), on: jest.fn() })),
 }));
 
 const { computeShortfall, nextState } = await import("../src/audit/complianceLogic.js");

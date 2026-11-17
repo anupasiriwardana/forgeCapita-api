@@ -12,7 +12,7 @@ jest.mock("pg", () => ({
   Pool: jest.fn().mockImplementation(() => ({
     query: mockQuery,
     connect: jest.fn().mockResolvedValue({ query: mockQuery, release: jest.fn() }),
-    end: jest.fn(),
+    end: jest.fn(), on: jest.fn(),
   })),
 }));
 
