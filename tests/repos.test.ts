@@ -536,4 +536,39 @@ describe("repo routes", () => {
     expect(none.status).toBe(404);
     expect(none.headers["cache-control"]).toBe("no-store");
   });
+
+  it("GET /founders/me/repos returns the own-repo DTO without internal ids", async () => {
+    const created = new Date("2026-01-02T03:04:05.000Z");
+    const row = (projectName: string | null) => ({
+      id: "22222222-2222-2222-2222-222222222222",
+      user_id: USER.id,
+      founder_wallet: FOUNDER,
+      provider: "github",
+      repo_id: "42",
+      repo_name: "my-app",
+      full_name: "org/my-app",
+      html_url: "https://github.com/org/my-app",
+      founder_login: "octocat",
+      collaborator_id: "7",
+      collaborator_status: "active",
+      project_id: projectName === null ? null : "421614:0x" + "ab".repeat(20),
+      created_at: created,
+      revoked_at: null,
+      project_name: projectName,
+      reserved: false,
+    });
+    mockSession(mockQuery, "founder", FOUNDER, { rows: [row("Acme"), row(null)], rowCount: 2 });
+    const res = await request(app).get("/api/v1/founders/me/repos").set("Cookie", SESSION_COOKIE_HEADER);
+    expect(res.status).toBe(200);
+    const [first, second] = res.body.data.items;
+    expect(Object.keys(first).sort()).toEqual(
+      ["createdAt", "founderLogin", "fullName", "htmlUrl", "id", "projectId", "projectName", "reserved", "status"].sort()
+    );
+    expect(first.userId).toBeUndefined();
+    expect(first.collaboratorId).toBeUndefined();
+    expect(first.founderWallet).toBeUndefined();
+    expect(first.createdAt).toBe(created.toISOString());
+    expect(first.projectName).toBe("Acme");
+    expect(second.projectName).toBeNull();
+  });
 });
