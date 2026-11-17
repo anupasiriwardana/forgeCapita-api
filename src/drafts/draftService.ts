@@ -77,8 +77,6 @@ function payloadOf(body: CreateDraftBody): DraftPayload {
   return {
     name: body.name,
     description: body.description,
-    ...(body.founderBio !== undefined && { founderBio: body.founderBio }),
-    ...(body.logoUrl !== undefined && { logoUrl: body.logoUrl }),
     ...(body.pitchDeckUrl !== undefined && { pitchDeckUrl: body.pitchDeckUrl }),
     ...(body.websiteUrl !== undefined && { websiteUrl: body.websiteUrl }),
     ...(body.category !== undefined && { category: body.category }),

@@ -153,7 +153,7 @@ describe("validation", () => {
 
   it("rejects javascript: and data: URLs", async () => {
     await rejects({ ...validBody, websiteUrl: "javascript:alert(1)" });
-    await rejects({ ...validBody, logoUrl: "data:text/html,hi" });
+    await rejects({ ...validBody, pitchDeckUrl: "data:text/html,hi" });
   });
 
   it("rejects a bad shadow wallet", () => rejects({ ...validBody, shadowWallet: "0x123" }));

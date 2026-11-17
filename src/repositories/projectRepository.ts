@@ -159,16 +159,14 @@ export async function upsertProfile(
     ),
     saved AS (
       INSERT INTO app.startup_profiles
-        (project_id, chain_id, escrow_address, name, description, logo_url, pitch_deck_url,
-         founder_bio, website_url, category, founder_wallet_id, shadow_wallet)
+        (project_id, chain_id, escrow_address, name, description, pitch_deck_url,
+         website_url, category, founder_wallet_id, shadow_wallet)
       VALUES
-        ($1::text, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::uuid, $12::text)
+        ($1::text, $2, $3, $4, $5, $6, $7, $8, $9::uuid, $10::text)
       ON CONFLICT (project_id) DO UPDATE SET
         name              = EXCLUDED.name,
         description       = EXCLUDED.description,
-        logo_url          = EXCLUDED.logo_url,
         pitch_deck_url    = EXCLUDED.pitch_deck_url,
-        founder_bio       = EXCLUDED.founder_bio,
         website_url       = EXCLUDED.website_url,
         category          = EXCLUDED.category,
         founder_wallet_id = COALESCE(EXCLUDED.founder_wallet_id, app.startup_profiles.founder_wallet_id),
@@ -178,9 +176,9 @@ export async function upsertProfile(
     ),
     audited AS (
       INSERT INTO app.audit_log (action, actor_user_id, target, before_value, after_value, ip)
-      SELECT 'shadow_wallet.bind', $13::uuid, $12::text, NULL, 'bound', $14::text
+      SELECT 'shadow_wallet.bind', $11::uuid, $10::text, NULL, 'bound', $12::text
       FROM saved
-      WHERE $11::uuid IS NOT NULL
+      WHERE $9::uuid IS NOT NULL
         AND saved.founder_wallet_id IS DISTINCT FROM (SELECT founder_wallet_id FROM prev)
       RETURNING id
     )
@@ -193,9 +191,7 @@ export async function upsertProfile(
     escrowAddress,
     body.name,
     body.description,
-    body.logoUrl ?? null,
     body.pitchDeckUrl ?? null,
-    body.founderBio ?? null,
     body.websiteUrl ?? null,
     body.category ?? null,
     binding?.walletId ?? null,

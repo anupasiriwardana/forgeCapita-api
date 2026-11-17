@@ -98,7 +98,9 @@ describe("RBAC and validation", () => {
       { ...validBody, extra: 1 },
       { ...validBody, projectId: "421614:" + ESCROW },
       { ...validBody, chainId: 1 },
-      { ...validBody, logoUrl: "javascript:alert(1)" },
+      { ...validBody, websiteUrl: "javascript:alert(1)" },
+      { ...validBody, logoUrl: "https://cdn.example.com/logo.png" },
+      { ...validBody, founderBio: "Bio" },
       { ...validBody, name: "" },
     ]) {
       expect((await post("/api/v1/launch-drafts", body)).status).toBe(400);

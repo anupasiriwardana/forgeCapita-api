@@ -95,8 +95,6 @@ export const listProjectsQuerySchema = z
 export const profileFieldsShape = {
   name: z.string().trim().min(1).max(120),
   description: z.string().trim().min(1).max(5000),
-  founderBio: z.string().max(5000).optional(),
-  logoUrl: httpUrlSchema.optional(),
   pitchDeckUrl: httpUrlSchema.optional(),
   websiteUrl: httpUrlSchema.optional(),
   category: categorySchema.optional(),

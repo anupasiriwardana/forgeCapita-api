@@ -109,7 +109,7 @@ Run `npm run migrate` for migration 009. The profile and the shadow wallet reser
 
 | Endpoint | Access | Purpose |
 |---|---|---|
-| `POST /api/v1/launch-drafts` `{chainId,name,description,founderBio?,logoUrl?,websiteUrl?,pitchDeckUrl?,category?,shadowWalletId?}` | `founder`, `staff`, `admin` | Create a pending draft (`201`). Founders must be eligible (`403`) and send an own approved, free wallet (`400` unavailable, `409` reserved or bound) |
+| `POST /api/v1/launch-drafts` `{chainId,name,description,websiteUrl?,pitchDeckUrl?,category?,shadowWalletId?}` | `founder`, `staff`, `admin` | Create a pending draft (`201`). Founders must be eligible (`403`) and send an own approved, free wallet (`400` unavailable, `409` reserved or bound) |
 | `POST /api/v1/launch-drafts/:id/attach` `{escrowAddress}` | owner | Pending to attached (idempotent for the same address; `409` other address or project taken); applies immediately when already indexed |
 | `POST /api/v1/launch-drafts/:id/cancel` | owner | Pending only (`409` once attached); releases the wallet |
 | `GET /api/v1/launch-drafts/mine` | signed in | Own drafts, newest first (20) |

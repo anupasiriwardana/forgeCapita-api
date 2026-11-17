@@ -327,7 +327,7 @@ describe("POST /api/projects/profile wallet binding", () => {
     const [sql, params] = calls()[4] as [string, unknown[]];
     expect(sql).toContain("'shadow_wallet.bind'");
     expect(sql).toContain("IS DISTINCT FROM");
-    expect(params.slice(10, 13)).toEqual([WALLET_ID, SHADOW, SESSION_USER_ID]);
+    expect(params.slice(8, 11)).toEqual([WALLET_ID, SHADOW, SESSION_USER_ID]);
   });
 
   it("resolves a wallet by lowercase address", async () => {
@@ -391,8 +391,8 @@ describe("POST /api/projects/profile wallet binding", () => {
     const [sql, params] = calls()[3] as [string, unknown[]];
     expect(sql).toContain("COALESCE(EXCLUDED.founder_wallet_id, app.startup_profiles.founder_wallet_id)");
     expect(sql).toContain("COALESCE(EXCLUDED.shadow_wallet, app.startup_profiles.shadow_wallet)");
-    expect(params[10]).toBeNull();
-    expect(params[11]).toBeNull();
+    expect(params[8]).toBeNull();
+    expect(params[9]).toBeNull();
   });
 
   it("staff skip ownership and eligibility but need an approved wallet", async () => {

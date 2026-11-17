@@ -46,11 +46,11 @@ describe("profile upsert CTE with wallet binding", () => {
     const founder = await createUser(1, "founder");
     const walletId = await createApprovedWallet(founder.id, addr(100));
     await upsertProfile(body(1), { walletId, address: addr(100) }, { userId: founder.id, ip: null });
-    const edited = await upsertProfile(body(1, { name: "Renamed", category: "defi", logoUrl: "https://x.example/l.png" }), null, {
+    const edited = await upsertProfile(body(1, { name: "Renamed", category: "defi" }), null, {
       userId: founder.id,
       ip: null,
     });
-    expect(edited).toMatchObject({ name: "Renamed", category: "defi", logo_url: "https://x.example/l.png" });
+    expect(edited).toMatchObject({ name: "Renamed", category: "defi" });
     expect(await findProfileWalletId(projectId(1))).toBe(walletId);
     const shadow = await pool.query<{ shadow_wallet: string }>("SELECT shadow_wallet FROM app.startup_profiles");
     expect(shadow.rows[0]?.shadow_wallet).toBe(addr(100));
@@ -59,6 +59,16 @@ describe("profile upsert CTE with wallet binding", () => {
     // re-supplying the same binding is not a change either
     await upsertProfile(body(1), { walletId, address: addr(100) }, { userId: founder.id, ip: null });
     expect(await auditRows()).toHaveLength(1);
+  });
+
+  it("editing a legacy profile keeps its logo and founder bio", async () => {
+    const founder = await createUser(1, "founder");
+    await upsertProfile(body(1), null, { userId: founder.id, ip: null });
+    await pool.query("UPDATE app.startup_profiles SET logo_url = 'https://x.example/l.png', founder_bio = 'Legacy bio'");
+    const edited = await upsertProfile(body(1, { name: "Renamed" }), null, { userId: founder.id, ip: null });
+    expect(edited).toMatchObject({ name: "Renamed", logo_url: "https://x.example/l.png", founder_bio: "Legacy bio" });
+    const row = await pool.query("SELECT logo_url, founder_bio FROM app.startup_profiles");
+    expect(row.rows).toEqual([{ logo_url: "https://x.example/l.png", founder_bio: "Legacy bio" }]);
   });
 
   it("binding an existing unbound profile writes the audit row", async () => {

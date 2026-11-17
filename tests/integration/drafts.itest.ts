@@ -139,10 +139,25 @@ describe("reconcile CTE", () => {
         shadow_wallet: addr(100 + 0xab),
       },
     ]);
+    const legacyColumns = await pool.query("SELECT logo_url, founder_bio FROM app.startup_profiles");
+    expect(legacyColumns.rows).toEqual([{ logo_url: null, founder_bio: null }]);
     expect((await auditRows()).map((a) => a.action)).toEqual(["launch_draft.create", "launch_draft.apply"]);
     expect(await findProjectById(`${CHAIN}:${escrow(1)}`)).toMatchObject({ profile_name: "Acme" });
     // a second run finds nothing to do
     expect(await reconcileDrafts()).toEqual({ applied: 0, conflicts: 0, expired: 0 });
+  });
+
+  it("still copies logo and bio from an in-flight legacy draft payload", async () => {
+    const { user, walletId } = await founderWithWallet(0xac);
+    const draft = await insertDraft({
+      ...newDraft(user, walletId),
+      payload: { ...payload, logoUrl: "https://x.example/l.png", founderBio: "Legacy bio" },
+    });
+    await attachPendingDraft(draft.id, user.id, escrow(2));
+    await insertPonderProject({ chainId: CHAIN, escrow: escrow(2), developer: user.address });
+    expect(await reconcileDrafts({ draftId: draft.id })).toEqual({ applied: 1, conflicts: 0, expired: 0 });
+    const row = await pool.query("SELECT logo_url, founder_bio FROM app.startup_profiles");
+    expect(row.rows).toEqual([{ logo_url: "https://x.example/l.png", founder_bio: "Legacy bio" }]);
   });
 
   it("marks the draft as conflict when a profile already exists, without overwriting it", async () => {

@@ -86,9 +86,7 @@ describe("POST /api/projects/profile", () => {
     projectId: `421614:${ESCROW}`,
     name: "ForgeCapita Demo Startup",
     description: "A SaaS platform tokenising startup equity on-chain.",
-    logoUrl: "https://cdn.example.com/logo.png",
     pitchDeckUrl: "https://cdn.example.com/pitch.pdf",
-    founderBio: "Serial entrepreneur, ex-Google.",
     websiteUrl: "https://forgecapita.io",
     category: "fintech",
     shadowWallet: "0x" + "c".repeat(40),
@@ -110,9 +108,9 @@ describe("POST /api/projects/profile", () => {
         {
           name: validBody.name,
           description: validBody.description,
-          logo_url: validBody.logoUrl,
+          logo_url: null,
           pitch_deck_url: validBody.pitchDeckUrl,
-          founder_bio: validBody.founderBio,
+          founder_bio: null,
           website_url: validBody.websiteUrl,
           category: "fintech",
           updated_at: new Date(0),
@@ -126,11 +124,20 @@ describe("POST /api/projects/profile", () => {
     expect(res.status).toBe(201);
     expect(res.body.message).toBe("Profile saved");
     expect(res.body.data.name).toBe(validBody.name);
-    expect(res.body.data.logoUrl).toBe(validBody.logoUrl);
+    expect(res.body.data.logoUrl).toBeNull();
     expect(res.text).not.toMatch(/shadow|kyc|_/);
     const params = dataCalls()[1]?.[1] as unknown[];
     expect(params.slice(0, 3)).toEqual([ID, 421614, ESCROW.toLowerCase()]);
     expect(params).toContain(validBody.shadowWallet);
+  });
+
+  it("rejects the removed logoUrl and founderBio fields as unknown", async () => {
+    const dataCalls = mockSession(mockQuery, "staff", "0x" + "11".repeat(20));
+    for (const extra of [{ logoUrl: "https://cdn.example.com/logo.png" }, { founderBio: "Bio" }]) {
+      const res = await asStaff({ ...validBody, ...extra });
+      expect(res.status).toBe(400);
+    }
+    expect(dataCalls()).toHaveLength(0);
   });
 
   it("rejects a non-composite projectId and an unsupported chain", async () => {

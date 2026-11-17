@@ -27,7 +27,7 @@ export const attachDraftBodySchema = z
 /** Profile fields stored in the draft payload (validated by createDraftBodySchema before insert). */
 export type DraftPayload = Pick<
   z.output<typeof createDraftBodySchema>,
-  "name" | "description" | "founderBio" | "logoUrl" | "pitchDeckUrl" | "websiteUrl" | "category"
+  "name" | "description" | "pitchDeckUrl" | "websiteUrl" | "category"
 > & { fundingGoalWei?: string };
 
 export type CreateDraftBody = z.output<typeof createDraftBodySchema>;

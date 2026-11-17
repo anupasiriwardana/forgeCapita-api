@@ -45,9 +45,9 @@ This API must create and manage an off-chain table named `startup_profiles`.
 * `project_id` (VARCHAR Primary Key) - Matches the `id` from the Ponder `project` table (e.g., `0xabc...`).
 * `name` (VARCHAR Not Null) - The commercial name of the startup.
 * `description` (TEXT Not Null) - A detailed description of the SaaS product.
-* `logo_url` (VARCHAR) - URL to the project's logo.
+* `logo_url` (VARCHAR) - Legacy column, no longer written by the API (kept for old projects; logo upload is planned).
 * `pitch_deck_url` (VARCHAR) - URL to the PDF/slides.
-* `founder_bio` (TEXT) - Background of the developer.
+* `founder_bio` (TEXT) - Legacy column, no longer written by the API (kept for old projects).
 * `website_url` (VARCHAR) - Product landing page.
 * `created_at` (TIMESTAMP default NOW()).
 
@@ -65,7 +65,7 @@ Provide a SQL initialization script or a function inside the `db/` directory tha
 
 * **POST `/api/projects/profile**`
 * **Role:** Receives off-chain metadata from the frontend when a founder launches a project, and saves it to the `startup_profiles` table. Use an `INSERT ... ON CONFLICT DO UPDATE` (upsert) strategy based on the `project_id`.
-* **Request Body:** `{ projectId, name, description, logoUrl, pitchDeckUrl, founderBio, websiteUrl }`
+* **Request Body:** `{ projectId, name, description, pitchDeckUrl, websiteUrl }`
 * **Response:** `{ success: true, message: "Profile saved", data: { ... } }`
 
 ### C. Get Unified Project Details (The SQL Join)

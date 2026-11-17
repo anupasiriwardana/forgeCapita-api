@@ -47,7 +47,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"projectId\": \"0x71C8416760895B0BA7999DA20B2F2A832A850001\",\n  \"name\": \"CloudForge AI\",\n  \"description\": \"Decentralized GPU orchestration and AI inference marketplace for autonomous web3 agents.\",\n  \"logoUrl\": \"https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&h=200&fit=crop\",\n  \"pitchDeckUrl\": \"https://forgecapita.io/decks/cloudforge-pitch.pdf\",\n  \"founderBio\": \"Former lead engineer at distributed systems lab with 7+ years building high-throughput microservices.\",\n  \"websiteUrl\": \"https://cloudforge.ai\"\n}",
+              "raw": "{\n  \"projectId\": \"0x71C8416760895B0BA7999DA20B2F2A832A850001\",\n  \"name\": \"CloudForge AI\",\n  \"description\": \"Decentralized GPU orchestration and AI inference marketplace for autonomous web3 agents.\",\n  \"pitchDeckUrl\": \"https://forgecapita.io/decks/cloudforge-pitch.pdf\",\n  \"websiteUrl\": \"https://cloudforge.ai\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

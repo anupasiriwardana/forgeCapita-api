@@ -82,9 +82,7 @@ export interface CreateProfileBody {
   projectId: string;
   name: string;
   description: string;
-  logoUrl?: string | undefined;
   pitchDeckUrl?: string | undefined;
-  founderBio?: string | undefined;
   websiteUrl?: string | undefined;
   category?: string | undefined;
   shadowWallet?: string | undefined;
