@@ -147,3 +147,7 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+api-instructions.md 
+backlog-api.md 
+status-api.md 
