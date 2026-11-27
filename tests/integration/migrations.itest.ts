@@ -102,6 +102,26 @@ describe("migrations on an empty database", () => {
     expect(await attempt({ about: "short" })).toBe("founder_applications_about_length");
   });
 
+  it("migration 025 adds auto_approved (NOT NULL, default false) to applications and shadow wallets", async () => {
+    const columns = await pool.query<{ table_name: string; is_nullable: string; column_default: string | null; data_type: string }>(
+      `SELECT table_name, is_nullable, column_default, data_type FROM information_schema.columns
+       WHERE table_schema = 'app' AND column_name = 'auto_approved' ORDER BY table_name`
+    );
+    expect(columns.rows).toEqual([
+      { table_name: "founder_applications", is_nullable: "NO", column_default: "false", data_type: "boolean" },
+      { table_name: "founder_wallets", is_nullable: "NO", column_default: "false", data_type: "boolean" },
+    ]);
+    const user = await createUser(2);
+    const wallet = await pool.query<{ auto_approved: boolean }>(
+      "INSERT INTO app.founder_wallets (user_id, address) VALUES ($1, $2) RETURNING auto_approved",
+      [user.id, "0x" + "ab".repeat(20)]
+    );
+    expect(wallet.rows[0]?.auto_approved).toBe(false);
+    await pool.query("DELETE FROM app.founder_wallets");
+    const sql = readFileSync(join(MIGRATIONS_DIR, "025_founder_auto_approval.sql"), "utf8");
+    await expect(pool.query(sql)).resolves.toBeDefined();
+  });
+
   it("each migration file can be re-executed on the migrated schema (idempotent SQL)", async () => {
     for (const file of listMigrations(MIGRATIONS_DIR)) {
       const sql = readFileSync(join(MIGRATIONS_DIR, file.name), "utf8");

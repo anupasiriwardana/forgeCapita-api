@@ -67,6 +67,7 @@ const EXPECTED = [
   "POST /api/v1/launch-drafts",
   "POST /api/v1/launch-drafts/{id}/attach",
   "POST /api/v1/launch-drafts/{id}/cancel",
+  "GET /api/v1/settings",
   "GET /api/v1/gas/{chainId}/minimum-goal",
   "GET /api/v1/takeover-cases/mine",
   "GET /api/v1/takeover-cases/by-project/{chainId}/{address}",

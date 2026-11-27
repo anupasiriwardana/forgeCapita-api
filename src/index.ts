@@ -44,6 +44,9 @@ async function boot(): Promise<void> {
   server.headersTimeout = 66_000;
 
   logGithubProvisioning();
+  if (config.FOUNDER_APPROVAL === "AUTO") {
+    logger.warn("founder auto-approval is ON (testing): founder applications and shadow wallets are approved without review");
+  }
 
   const stopReconcile = startReconcileJob();
 

@@ -17,6 +17,8 @@ export interface ShadowWalletRecord {
   reviewNote: string | null;
   reviewedBy: string | null;
   reviewedAt: Date | null;
+  /** Approved by the server without review (FOUNDER_APPROVAL=AUTO); reviewedBy is null. */
+  autoApproved: boolean;
   createdAt: Date;
 }
 
@@ -41,6 +43,7 @@ export interface OwnWalletRecord {
   projectId: string | null;
   /** True while an active (pending/attached) launch draft holds the wallet. */
   reserved: boolean;
+  autoApproved: boolean;
 }
 
 export interface ApprovedWallet {
@@ -82,6 +85,7 @@ interface WalletRow {
   review_note: string | null;
   reviewed_by: string | null;
   reviewed_at: Date | null;
+  auto_approved: boolean;
   created_at: Date;
 }
 
@@ -92,6 +96,7 @@ interface OwnWalletRow {
   review_note: string | null;
   project_id: string | null;
   reserved: boolean;
+  auto_approved: boolean;
 }
 
 interface ApprovedWalletRow {
@@ -116,7 +121,7 @@ interface ChecksRow {
 }
 
 const WALLET_SELECT = `SELECT w.id, w.user_id, u.wallet_address AS founder_wallet, w.address, w.status,
-  w.review_note, w.reviewed_by, w.reviewed_at, w.created_at
+  w.review_note, w.reviewed_by, w.reviewed_at, w.auto_approved, w.created_at
   FROM app.founder_wallets w JOIN app.users u ON u.id = w.user_id`;
 
 function toAcceptance(row: AcceptanceRow): AcceptanceRecord {
@@ -133,6 +138,7 @@ function toWallet(row: WalletRow): ShadowWalletRecord {
     reviewNote: row.review_note,
     reviewedBy: row.reviewed_by,
     reviewedAt: row.reviewed_at,
+    autoApproved: row.auto_approved === true,
     createdAt: row.created_at,
   };
 }
@@ -194,7 +200,7 @@ export async function insertShadowWallet(
     `WITH requested AS (
        INSERT INTO app.founder_wallets (user_id, address)
        VALUES ($1::uuid, $3::text)
-       RETURNING id, user_id, address, status, review_note, reviewed_by, reviewed_at, created_at
+       RETURNING id, user_id, address, status, review_note, reviewed_by, reviewed_at, auto_approved, created_at
      ),
      audited AS (
        INSERT INTO app.audit_log (action, actor_user_id, target, before_value, after_value, ip)
@@ -203,7 +209,7 @@ export async function insertShadowWallet(
        RETURNING id
      )
      SELECT r.id, r.user_id, $2::text AS founder_wallet, r.address, r.status, r.review_note,
-       r.reviewed_by, r.reviewed_at, r.created_at
+       r.reviewed_by, r.reviewed_at, r.auto_approved, r.created_at
      FROM requested r`,
     [userId, founderWallet, address, ip]
   );
@@ -212,10 +218,48 @@ export async function insertShadowWallet(
   return toWallet(row);
 }
 
+/**
+ * FOUNDER_APPROVAL=AUTO (testing): inserts the shadow wallet already approved (no reviewer) with
+ * its audit row (actor NULL, target the founder's login wallet as for a staff review) in ONE
+ * statement. Returns null, writing nothing, while the founder still has a PENDING request (the
+ * pending index does not cover an approved insert). A unique violation on
+ * founder_wallets_approved_address_idx (address approved for anyone) propagates as a pg error.
+ */
+export async function insertAutoApprovedShadowWallet(
+  userId: string,
+  founderWallet: string,
+  address: string,
+  note: string,
+  ip: string | null
+): Promise<ShadowWalletRecord | null> {
+  const result = await pool.query<WalletRow>(
+    `WITH approved AS (
+       INSERT INTO app.founder_wallets (user_id, address, status, reviewed_at, review_note, auto_approved)
+       SELECT $1::uuid, $3::text, 'approved', now(), $4::text, true
+       WHERE NOT EXISTS (
+         SELECT 1 FROM app.founder_wallets p WHERE p.user_id = $1::uuid AND p.status = 'pending'
+       )
+       RETURNING id, user_id, address, status, review_note, reviewed_by, reviewed_at, auto_approved, created_at
+     ),
+     audited AS (
+       INSERT INTO app.audit_log (action, actor_user_id, target, before_value, after_value, ip)
+       SELECT 'shadow_wallet.auto_approve', NULL, $2::text, NULL, 'approved', $5::text
+       FROM approved
+       RETURNING id
+     )
+     SELECT a.id, a.user_id, $2::text AS founder_wallet, a.address, a.status, a.review_note,
+       a.reviewed_by, a.reviewed_at, a.auto_approved, a.created_at
+     FROM approved a`,
+    [userId, founderWallet, address, note, ip]
+  );
+  const row = result.rows[0];
+  return row ? toWallet(row) : null;
+}
+
 /** All wallets of a founder (newest first, bounded) with the project each one is bound to. */
 export async function listOwnWallets(userId: string): Promise<OwnWalletRecord[]> {
   const result = await pool.query<OwnWalletRow>(
-    `SELECT w.id, w.address, w.status, w.review_note,
+    `SELECT w.id, w.address, w.status, w.review_note, w.auto_approved,
        COALESCE(s.project_id, d.project_id) AS project_id, (d.id IS NOT NULL) AS reserved
      FROM app.founder_wallets w
      LEFT JOIN app.startup_profiles s ON s.founder_wallet_id = w.id
@@ -231,6 +275,7 @@ export async function listOwnWallets(userId: string): Promise<OwnWalletRecord[]>
     reviewNote: row.review_note,
     projectId: row.project_id,
     reserved: row.reserved === true,
+    autoApproved: row.auto_approved === true,
   }));
 }
 

@@ -45,6 +45,7 @@ function toOwnerDto(a: ApplicationRecord): Record<string, unknown> {
     reviewNote: a.reviewNote,
     reviewedAt: iso(a.reviewedAt),
     kycVerifiedAt: iso(a.kycVerifiedAt),
+    autoApproved: a.autoApproved,
     createdAt: a.createdAt.toISOString(),
     updatedAt: a.updatedAt.toISOString(),
   };
@@ -67,17 +68,24 @@ export async function postApplication(req: Request, res: Response, next: NextFun
   try {
     if (!req.user) throw new AppError(401, "Authentication required");
     const body = validatedOf<CreateApplicationBody>(res, "body");
-    const application = await submitApplication(req.user, {
-      resumeUrl: body.resumeUrl,
-      about: body.about,
-      linkedinUrl: body.linkedinUrl,
-      githubUrl: body.githubUrl,
-      portfolioUrl: body.portfolioUrl,
-      otherLinks: body.otherLinks,
-      kycDocsUrl: body.kycDocsUrl,
-      kycNote: body.kycNote,
-    });
-    res.status(201).json({ success: true, data: { application: toOwnerDto(application) } } satisfies ApiResponse);
+    const { application, roleChanged } = await submitApplication(
+      req.user,
+      {
+        resumeUrl: body.resumeUrl,
+        about: body.about,
+        linkedinUrl: body.linkedinUrl,
+        githubUrl: body.githubUrl,
+        portfolioUrl: body.portfolioUrl,
+        otherLinks: body.otherLinks,
+        kycDocsUrl: body.kycDocsUrl,
+        kycNote: body.kycNote,
+      },
+      req.ip ?? null
+    );
+    res.status(201).json({
+      success: true,
+      data: { application: toOwnerDto(application), roleChanged },
+    } satisfies ApiResponse);
   } catch (err) {
     next(err);
   }

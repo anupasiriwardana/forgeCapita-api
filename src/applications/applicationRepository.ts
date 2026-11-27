@@ -1,5 +1,5 @@
 import { pool } from "../db/pool.js";
-import type { ApplicationRecord, ApplicationStatus, ReviewOutcome } from "./applicationTypes.js";
+import type { ApplicationRecord, ApplicationStatus, ReviewOutcome, SubmitOutcome } from "./applicationTypes.js";
 
 export interface NewApplication {
   userId: string;
@@ -38,8 +38,13 @@ interface ApplicationRow {
   reviewed_at: Date | null;
   kyc_verified_at: Date | null;
   kyc_verified_by: string | null;
+  auto_approved: boolean;
   created_at: Date;
   updated_at: Date;
+}
+
+interface AutoApprovedRow extends ApplicationRow {
+  role_changed: boolean;
 }
 
 interface ReviewRow {
@@ -54,7 +59,9 @@ interface ReviewRow {
 const APPLICATION_COLUMNS = `id, user_id, wallet_address, resume_url, about, linkedin_url, github_url,
   portfolio_url, other_links, project_name, summary, website_url,
   pitch_deck_url, repo_url, contact, kyc_docs_url, kyc_note, status, review_note, reviewed_by, reviewed_at,
-  kyc_verified_at, kyc_verified_by, created_at, updated_at`;
+  kyc_verified_at, kyc_verified_by, auto_approved, created_at, updated_at`;
+
+export const AUTO_APPROVAL_NOTE = "Auto-approved (testing mode)";
 
 function toRecord(row: ApplicationRow): ApplicationRecord {
   return {
@@ -81,6 +88,7 @@ function toRecord(row: ApplicationRow): ApplicationRecord {
     reviewedAt: row.reviewed_at,
     kycVerifiedAt: row.kyc_verified_at,
     kycVerifiedBy: row.kyc_verified_by,
+    autoApproved: row.auto_approved === true,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -97,6 +105,22 @@ function toOutcome(row: ReviewRow): ReviewOutcome {
   };
 }
 
+/** Positional parameters $1..$10 shared by both insert statements. */
+function insertParams(input: NewApplication): unknown[] {
+  return [
+    input.userId,
+    input.walletAddress,
+    input.resumeUrl,
+    input.about,
+    input.linkedinUrl ?? null,
+    input.githubUrl ?? null,
+    input.portfolioUrl ?? null,
+    input.otherLinks && input.otherLinks.length > 0 ? input.otherLinks : null,
+    input.kycDocsUrl,
+    input.kycNote ?? null,
+  ];
+}
+
 /** Inserts a pending application. A unique-index violation (open application) propagates as a pg error. */
 export async function insertApplication(input: NewApplication): Promise<ApplicationRecord> {
   const result = await pool.query<ApplicationRow>(
@@ -105,22 +129,56 @@ export async function insertApplication(input: NewApplication): Promise<Applicat
         kyc_docs_url, kyc_note)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8::text[], $9, $10)
      RETURNING ${APPLICATION_COLUMNS}`,
-    [
-      input.userId,
-      input.walletAddress,
-      input.resumeUrl,
-      input.about,
-      input.linkedinUrl ?? null,
-      input.githubUrl ?? null,
-      input.portfolioUrl ?? null,
-      input.otherLinks && input.otherLinks.length > 0 ? input.otherLinks : null,
-      input.kycDocsUrl,
-      input.kycNote ?? null,
-    ]
+    insertParams(input)
   );
   const row = result.rows[0];
   if (!row) throw new Error("application insert returned no row");
   return toRecord(row);
+}
+
+/**
+ * FOUNDER_APPROVAL=AUTO (testing): inserts the application already approved in ONE statement:
+ * the KYC stamp and review fields with no reviewer, the 'founder' role for a current 'investor'
+ * only (never a downgrade of staff/admin) and the audit rows (actor NULL). Sessions are NOT
+ * revoked: the session lookup reads the role live, so the applicant keeps signing in. A
+ * unique-index violation (open application) propagates as a pg error and nothing is written.
+ */
+export async function insertAutoApprovedApplication(input: NewApplication, ip: string | null): Promise<SubmitOutcome> {
+  const result = await pool.query<AutoApprovedRow>(
+    `WITH applicant AS (
+       SELECT u.id, u.role FROM app.users u WHERE u.id = $1::uuid FOR UPDATE OF u
+     ),
+     inserted AS (
+       INSERT INTO app.founder_applications
+         (user_id, wallet_address, resume_url, about, linkedin_url, github_url, portfolio_url, other_links,
+          kyc_docs_url, kyc_note, status, kyc_verified_at, reviewed_at, review_note, auto_approved)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::text[], $9, $10, 'approved', now(), now(), $11::text, true)
+       RETURNING ${APPLICATION_COLUMNS}
+     ),
+     promoted AS (
+       UPDATE app.users us SET role = 'founder'
+       FROM applicant a, inserted i
+       WHERE us.id = a.id AND a.role = 'investor'
+       RETURNING us.id
+     ),
+     audit_approve AS (
+       INSERT INTO app.audit_log (action, actor_user_id, target, before_value, after_value, ip)
+       SELECT 'application.auto_approve', NULL, i.wallet_address, NULL, 'approved', $12::text
+       FROM inserted i
+       RETURNING id
+     ),
+     audit_role AS (
+       INSERT INTO app.audit_log (action, actor_user_id, target, before_value, after_value, ip)
+       SELECT 'role.change', NULL, i.wallet_address, 'investor', 'founder', $12::text
+       FROM inserted i JOIN promoted p ON p.id = i.user_id
+       RETURNING id
+     )
+     SELECT i.*, EXISTS (SELECT 1 FROM promoted) AS role_changed FROM inserted i`,
+    [...insertParams(input), AUTO_APPROVAL_NOTE, ip]
+  );
+  const row = result.rows[0];
+  if (!row) throw new Error("application insert returned no row");
+  return { application: toRecord(row), roleChanged: row.role_changed === true };
 }
 
 export async function findLatestApplicationByUser(userId: string): Promise<ApplicationRecord | null> {

@@ -24,6 +24,7 @@ import { createRelayRoutes } from "./routes/relayRoutes.js";
 import { createUserProfileRoutes } from "./routes/profileRoutes.js";
 import { createTakeoverRoutes } from "./routes/takeoverRoutes.js";
 import { createProjectRoutes } from "./routes/projectRoutes.js";
+import { createSettingsRoutes } from "./routes/settingsRoutes.js";
 
 const allowedOrigins: ReadonlySet<string> = new Set(config.CORS_ORIGINS);
 
@@ -120,6 +121,8 @@ export function createApp(): Express {
     max: config.AUTH_RATE_LIMIT_MAX,
   });
   app.use("/api/v1/auth", createAuthRoutes(authLimiter));
+  // Public, non-secret settings (e.g. founder approval mode); covered by the global limiter.
+  app.use("/api/v1/settings", createSettingsRoutes());
 
   // ONE limiter instance for the admin write route.
   const adminLimiter = createLimiter({

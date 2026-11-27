@@ -28,6 +28,8 @@ process.env["REVENUE_TOLERANCE_BPS"] = "";
 process.env["REVENUE_AUDIT_ENABLED"] = "false";
 // The real env file may set the minimum-goal mode; tests pin it (assigned, because dotenv restores deleted vars).
 process.env["MINIMUM_GOAL_MODE"] = "test";
+// The real env file may enable founder auto-approval (testing); integration tests expect MANUAL.
+process.env["FOUNDER_APPROVAL"] = "";
 // Same for GitHub provisioning: assigned empty so the real env file cannot enable it.
 for (const name of ["GITHUB_APP_ID", "GITHUB_APP_INSTALLATION_ID", "GITHUB_APP_PRIVATE_KEY_BASE64", "GITHUB_ORG", "REPO_BRANCH_PROTECTION"]) {
   process.env[name] = "";

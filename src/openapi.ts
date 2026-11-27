@@ -383,7 +383,7 @@ export const openApiDocument = {
           {
             code: "201",
             description: "Application created",
-            data: { type: "object", properties: { application: generic("Owner view: id, walletAddress, about, linkedinUrl, githubUrl, portfolioUrl, otherLinks, legacy project fields (null on new applications), status, reviewNote, reviewedAt, kycVerifiedAt, createdAt, updatedAt (never resumeUrl, kycDocsUrl or kycNote)") } },
+            data: { type: "object", properties: { application: generic("Owner view: id, walletAddress, about, linkedinUrl, githubUrl, portfolioUrl, otherLinks, legacy project fields (null on new applications), status (approved at once when FOUNDER_APPROVAL=AUTO), reviewNote, reviewedAt, kycVerifiedAt, autoApproved, createdAt, updatedAt (never resumeUrl, kycDocsUrl or kycNote)"), roleChanged: { type: "boolean", description: "True when auto-approval promoted the caller from investor to founder (sessions are kept)" } } },
           },
         ],
         errors: [400, 401, 403, 409],
@@ -405,7 +405,7 @@ export const openApiDocument = {
         session: SESSION,
         cache: "no-store",
         parameters: [query("status", { type: "string", enum: ["pending", "approved", "rejected"] }), limitParam, offsetParam],
-        success: ok("Page of applications", pagedGeneric("Staff view: owner fields plus userId, reviewedBy, kycVerifiedBy, resumeUrl, kycDocsUrl, kycNote")),
+        success: ok("Page of applications", pagedGeneric("Staff view: owner fields (including autoApproved) plus userId, reviewedBy, kycVerifiedBy (both null when auto-approved), resumeUrl, kycDocsUrl, kycNote")),
         errors: [400, 401, 403],
       }),
     },
@@ -539,13 +539,13 @@ export const openApiDocument = {
             data: {
               type: "object",
               properties: {
-                shadowWallet: generic("id, address, status (pending|approved|rejected), reviewNote"),
+                shadowWallet: generic("id, address, status (pending|approved|rejected; approved at once when FOUNDER_APPROVAL=AUTO), reviewNote, autoApproved"),
               },
             },
           },
         ],
         errors: [400, 401, 403, 409],
-        notes: { 409: "An open request exists or the address is approved for another founder" },
+        notes: { 409: "An open shadow wallet request already exists, or the address is already approved for another founder" },
       }),
     },
     "/api/v1/founders/me/repo": {
@@ -611,7 +611,7 @@ export const openApiDocument = {
         session: SESSION,
         cache: "no-store",
         parameters: [query("status", { type: "string", enum: ["pending", "approved", "rejected"] }), limitParam, offsetParam],
-        success: ok("Page of shadow wallets", pagedGeneric("id, address, status, reviewNote, userId, founderWallet, reviewedBy, reviewedAt, createdAt")),
+        success: ok("Page of shadow wallets", pagedGeneric("id, address, status, reviewNote, autoApproved, userId, founderWallet, reviewedBy (null when auto-approved), reviewedAt, createdAt")),
         errors: [400, 401, 403],
       }),
     },
@@ -727,6 +727,23 @@ export const openApiDocument = {
         parameters: [idParam],
         success: ok("Draft cancelled", { type: "object", properties: { draft: generic("id, status, chainId, shadowWalletId, createdAt, projectId, escrowAddress, appliedAt") } }),
         errors: [400, 401, 403, 404, 409],
+      }),
+    },
+    "/api/v1/settings": {
+      get: op({
+        summary: "Public, non-secret settings the frontend adapts to (public)",
+        cache: "public, max-age=30",
+        success: ok("Settings", {
+          type: "object",
+          required: ["founderApproval"],
+          properties: {
+            founderApproval: {
+              type: "string",
+              enum: ["auto", "manual"],
+              description: "auto: founder applications and shadow wallets are approved without review (testing only)",
+            },
+          },
+        }),
       }),
     },
     "/api/v1/gas/{chainId}/minimum-goal": {
@@ -1487,6 +1504,7 @@ export const openApiDocument = {
                 reviewNote: { type: "string", nullable: true },
                 projectId: { type: "string", nullable: true },
                 reserved: { type: "boolean" },
+                autoApproved: { type: "boolean" },
               },
             },
           },

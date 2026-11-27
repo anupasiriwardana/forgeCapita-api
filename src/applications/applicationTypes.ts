@@ -25,8 +25,16 @@ export interface ApplicationRecord {
   reviewedAt: Date | null;
   kycVerifiedAt: Date | null;
   kycVerifiedBy: string | null;
+  /** Approved by the server without review (FOUNDER_APPROVAL=AUTO); reviewer fields are null. */
+  autoApproved: boolean;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface SubmitOutcome {
+  application: ApplicationRecord;
+  /** True when an auto-approval promoted the applicant from investor to founder. */
+  roleChanged: boolean;
 }
 
 export interface ReviewOutcome {

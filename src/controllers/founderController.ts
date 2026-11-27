@@ -35,7 +35,7 @@ function iso(value: Date | null): string | null {
 }
 
 function toOwnerDto(w: ShadowWalletRecord): Record<string, unknown> {
-  return { id: w.id, address: w.address, status: w.status, reviewNote: w.reviewNote };
+  return { id: w.id, address: w.address, status: w.status, reviewNote: w.reviewNote, autoApproved: w.autoApproved };
 }
 
 function toStaffDto(w: ShadowWalletRecord): Record<string, unknown> {
@@ -106,6 +106,7 @@ export async function getMe(req: Request, res: Response, next: NextFunction): Pr
           reviewNote: w.reviewNote,
           projectId: w.projectId,
           reserved: w.reserved,
+          autoApproved: w.autoApproved,
         })),
       },
     } satisfies ApiResponse);

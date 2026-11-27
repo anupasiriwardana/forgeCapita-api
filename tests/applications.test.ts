@@ -392,6 +392,10 @@ describe("submit and read", () => {
     expect(created.body.data.application).not.toHaveProperty("kycNote");
     expect(created.body.data.application).not.toHaveProperty("resumeUrl");
     expect(apps[0]).toMatchObject({ about: ABOUT, status: "pending", project_name: null });
+    expect(created.body.data).toMatchObject({ roleChanged: false, application: { status: "pending", autoApproved: false } });
+    const insertSql = mockQuery.mock.calls.map((c) => String(c[0])).find((sql) => sql.includes("INSERT INTO app.founder_applications"));
+    expect(insertSql).not.toContain("'application.auto_approve'");
+    expect(insertSql).not.toContain("app.users");
 
     const mine = await request(app).get("/api/v1/applications/mine").set("Cookie", cookie);
     expect(mine.status).toBe(200);

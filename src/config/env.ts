@@ -144,6 +144,9 @@ export const envSchema = z
     ),
     // Live minimum funding goal. Only "test" disables enforcement; anything else invalid fails startup.
     MINIMUM_GOAL_MODE: emptyAsUndefined(z.enum(["test", "live"]).default("live")),
+    // Founder approval. "AUTO" approves founder applications and shadow wallets without review
+    // (testing only); anything but MANUAL/AUTO fails startup.
+    FOUNDER_APPROVAL: emptyAsUndefined(z.enum(["MANUAL", "AUTO"]).default("MANUAL")),
     MIN_GOAL_FLOOR_WEI_421614: emptyAsUndefined(weiSchema("500000000000000000")),
     MIN_GOAL_FLOOR_WEI_97: emptyAsUndefined(weiSchema("1000000000000000000")),
     MIN_GOAL_CEILING_WEI_421614: emptyAsUndefined(z.string().regex(/^\d{1,30}$/).optional()),

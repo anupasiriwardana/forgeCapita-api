@@ -70,6 +70,14 @@ function walletRow(overrides: Record<string, unknown> = {}): Record<string, unkn
   };
 }
 
+describe("GET /api/v1/settings (MANUAL)", () => {
+  it("answers founderApproval manual without a session", async () => {
+    const res = await request(app).get("/api/v1/settings");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ success: true, data: { founderApproval: "manual" } });
+  });
+});
+
 describe("GET /api/v1/agreement", () => {
   it("is public and pins the message template format", async () => {
     const res = await request(app).get("/api/v1/agreement");
@@ -174,7 +182,8 @@ describe("shadow wallet", () => {
     const dataCalls = mockSession(mockQuery, "founder", founder.address, { rows: [walletRow()], rowCount: 1 });
     const ok = await post("/api/v1/founders/me/shadow-wallet", { address: "0x" + "AB".repeat(20) });
     expect(ok.status).toBe(201);
-    expect(ok.body.data.shadowWallet).toEqual({ id: WALLET_ID, address: SHADOW, status: "pending", reviewNote: null });
+    expect(ok.body.data.shadowWallet).toEqual({ id: WALLET_ID, address: SHADOW, status: "pending", reviewNote: null, autoApproved: false });
+    expect(dataCalls()[0]?.[0]).not.toContain("'shadow_wallet.auto_approve'");
     const [sql, params] = dataCalls()[0] as [string, unknown[]];
     expect(sql).toContain("'shadow_wallet.request'");
     expect(params[1]).toBe(founder.address.toLowerCase());
@@ -280,8 +289,8 @@ describe("GET /api/v1/founders/me", () => {
       { rows: [{ agreement_version: "0.1", text_hash: "a".repeat(64), accepted_at: new Date(1_700_000_000_000) }], rowCount: 1 },
       {
         rows: [
-          { id: WALLET_ID, address: SHADOW, status: "approved", review_note: null, project_id: PROJECT, reserved: false },
-          { id: WALLET_ID_2, address: SHADOW_2, status: "pending", review_note: null, project_id: null, reserved: false },
+          { id: WALLET_ID, address: SHADOW, status: "approved", review_note: null, project_id: PROJECT, reserved: false, auto_approved: true },
+          { id: WALLET_ID_2, address: SHADOW_2, status: "pending", review_note: null, project_id: null, reserved: false, auto_approved: false },
         ],
         rowCount: 2,
       }
@@ -291,8 +300,8 @@ describe("GET /api/v1/founders/me", () => {
     expect(res.body.data).toEqual({
       agreement: { version: "0.1", acceptedAt: "2023-11-14T22:13:20.000Z" },
       wallets: [
-        { id: WALLET_ID, address: SHADOW, status: "approved", reviewNote: null, projectId: PROJECT, reserved: false },
-        { id: WALLET_ID_2, address: SHADOW_2, status: "pending", reviewNote: null, projectId: null, reserved: false },
+        { id: WALLET_ID, address: SHADOW, status: "approved", reviewNote: null, projectId: PROJECT, reserved: false, autoApproved: true },
+        { id: WALLET_ID_2, address: SHADOW_2, status: "pending", reviewNote: null, projectId: null, reserved: false, autoApproved: false },
       ],
     });
     mockSession(mockQuery, "founder", founder.address);

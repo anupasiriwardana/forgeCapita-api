@@ -1,11 +1,14 @@
 import { getAddress, ZeroAddress } from "ethers";
+import { AUTO_APPROVAL_NOTE } from "../applications/applicationRepository.js";
 import { signatureMatches } from "../auth/siwe.js";
+import { config } from "../config/env.js";
 import { AppError } from "../errors.js";
 import type { AuthUser } from "../types/index.js";
 import { AGREEMENT_VERSION, ISSUED_AT_TOLERANCE_MS, buildAgreementMessage, loadAgreement } from "./agreement.js";
 import {
   approveShadowWallet,
   insertAcceptance,
+  insertAutoApprovedShadowWallet,
   insertShadowWallet,
   readLaunchChecks,
   rejectShadowWallet,
@@ -14,8 +17,31 @@ import type { AcceptanceRecord, LaunchChecks, ShadowWalletRecord, WalletReviewOu
 
 const PG_UNIQUE_VIOLATION = "23505";
 
+const APPROVED_ADDRESS_INDEX = "founder_wallets_approved_address_idx";
+const OPEN_REQUEST_EXISTS = "An open shadow wallet request already exists";
+const ADDRESS_ALREADY_APPROVED = "Address is already approved for another founder";
+
 function isUniqueViolation(err: unknown): boolean {
   return typeof err === "object" && err !== null && "code" in err && err.code === PG_UNIQUE_VIOLATION;
+}
+
+function violatedConstraint(err: unknown): string | undefined {
+  if (typeof err !== "object" || err === null || !("constraint" in err)) return undefined;
+  return typeof err.constraint === "string" ? err.constraint : undefined;
+}
+
+/** Pending-request clash vs. an address already approved (for anyone), told apart by index name. */
+function shadowWalletConflict(err: unknown): AppError {
+  return violatedConstraint(err) === APPROVED_ADDRESS_INDEX
+    ? new AppError(409, ADDRESS_ALREADY_APPROVED)
+    : new AppError(409, OPEN_REQUEST_EXISTS);
+}
+
+/** FOUNDER_APPROVAL=AUTO: approved at once; a founder with a pending request still gets 409. */
+async function insertAutoApproved(user: AuthUser, address: string, ip: string | null): Promise<ShadowWalletRecord> {
+  const wallet = await insertAutoApprovedShadowWallet(user.id, user.address.toLowerCase(), address, AUTO_APPROVAL_NOTE, ip);
+  if (!wallet) throw new AppError(409, OPEN_REQUEST_EXISTS);
+  return wallet;
 }
 
 /** Verifies the wallet signature over the server-built message, then stores the acceptance. */
@@ -55,7 +81,10 @@ export async function acceptAgreement(
   }
 }
 
-/** Declares a shadow wallet for staff review; one pending request at a time, any number approved. */
+/**
+ * Declares a shadow wallet for staff review (approved at once when FOUNDER_APPROVAL=AUTO); one
+ * pending request at a time, any number approved.
+ */
 export async function requestShadowWallet(
   user: AuthUser,
   rawAddress: string,
@@ -72,9 +101,10 @@ export async function requestShadowWallet(
     throw new AppError(400, "Use a dedicated wallet, not your login wallet");
   }
   try {
+    if (config.FOUNDER_APPROVAL === "AUTO") return await insertAutoApproved(user, address, ip);
     return await insertShadowWallet(user.id, user.address.toLowerCase(), address, ip);
   } catch (err) {
-    if (isUniqueViolation(err)) throw new AppError(409, "An open shadow wallet request already exists");
+    if (isUniqueViolation(err)) throw shadowWalletConflict(err);
     throw err;
   }
 }
@@ -89,7 +119,7 @@ async function review(run: () => Promise<WalletReviewOutcome | null>, reviewer: 
   try {
     assertTransitioned(await run(), reviewer);
   } catch (err) {
-    if (isUniqueViolation(err)) throw new AppError(409, "Address is already approved for another founder");
+    if (isUniqueViolation(err)) throw new AppError(409, ADDRESS_ALREADY_APPROVED);
     throw err;
   }
 }
