@@ -7,6 +7,7 @@ import type { AuthUser } from "../types/index.js";
 import { AGREEMENT_VERSION, ISSUED_AT_TOLERANCE_MS, buildAgreementMessage, loadAgreement } from "./agreement.js";
 import {
   approveShadowWallet,
+  findApprovedWallet,
   insertAcceptance,
   insertAutoApprovedShadowWallet,
   insertShadowWallet,
@@ -20,6 +21,7 @@ const PG_UNIQUE_VIOLATION = "23505";
 const APPROVED_ADDRESS_INDEX = "founder_wallets_approved_address_idx";
 const OPEN_REQUEST_EXISTS = "An open shadow wallet request already exists";
 const ADDRESS_ALREADY_APPROVED = "Address is already approved for another founder";
+const ADDRESS_ALREADY_YOURS = "This address is already one of your approved shadow wallets";
 
 function isUniqueViolation(err: unknown): boolean {
   return typeof err === "object" && err !== null && "code" in err && err.code === PG_UNIQUE_VIOLATION;
@@ -30,11 +32,17 @@ function violatedConstraint(err: unknown): string | undefined {
   return typeof err.constraint === "string" ? err.constraint : undefined;
 }
 
-/** Pending-request clash vs. an address already approved (for anyone), told apart by index name. */
-function shadowWalletConflict(err: unknown): AppError {
-  return violatedConstraint(err) === APPROVED_ADDRESS_INDEX
-    ? new AppError(409, ADDRESS_ALREADY_APPROVED)
-    : new AppError(409, OPEN_REQUEST_EXISTS);
+/**
+ * Pending-request clash vs. an address already approved, told apart by index name. An approved
+ * address is then looked up so a founder re-submitting their own wallet gets an accurate message;
+ * another founder's ownership is never revealed beyond the existing generic text.
+ */
+async function shadowWalletConflict(err: unknown, user: AuthUser, address: string): Promise<AppError> {
+  if (violatedConstraint(err) !== APPROVED_ADDRESS_INDEX) return new AppError(409, OPEN_REQUEST_EXISTS);
+  const approved = await findApprovedWallet({ address });
+  return approved?.userId === user.id
+    ? new AppError(409, ADDRESS_ALREADY_YOURS)
+    : new AppError(409, ADDRESS_ALREADY_APPROVED);
 }
 
 /** FOUNDER_APPROVAL=AUTO: approved at once; a founder with a pending request still gets 409. */
@@ -104,7 +112,7 @@ export async function requestShadowWallet(
     if (config.FOUNDER_APPROVAL === "AUTO") return await insertAutoApproved(user, address, ip);
     return await insertShadowWallet(user.id, user.address.toLowerCase(), address, ip);
   } catch (err) {
-    if (isUniqueViolation(err)) throw shadowWalletConflict(err);
+    if (isUniqueViolation(err)) throw await shadowWalletConflict(err, user, address);
     throw err;
   }
 }

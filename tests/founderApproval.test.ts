@@ -208,4 +208,21 @@ describe("shadow wallet request in AUTO", () => {
     expect(taken.status).toBe(409);
     expect(taken.body.error).toBe("Address is already approved for another founder");
   });
+
+  it("tells a founder when the address is already one of their own approved wallets", async () => {
+    mockSession(
+      mockQuery,
+      "founder",
+      applicant.address,
+      Object.assign(new Error("dup"), { code: "23505", constraint: "founder_wallets_approved_address_idx" }),
+      {
+        rows: [
+          { id: "aaaaaaaa-0000-4000-8000-000000000001", user_id: SESSION_USER_ID, address: SHADOW, reserved: false, bound: false },
+        ],
+      }
+    );
+    const own = await post("/api/v1/founders/me/shadow-wallet", { address: SHADOW });
+    expect(own.status).toBe(409);
+    expect(own.body.error).toBe("This address is already one of your approved shadow wallets");
+  });
 });
