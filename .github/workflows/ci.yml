@@ -33,6 +33,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Fails on high or critical advisories in production dependencies.
+      - run: npm audit --omit=dev --audit-level=high
       # tsc --noEmit minus the two known TS1295/TS1287 module-format diagnostics.
       - run: npm run typecheck
       - run: npm test

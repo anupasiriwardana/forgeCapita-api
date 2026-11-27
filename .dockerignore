@@ -7,4 +7,15 @@ dist
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+logs
 .DS_Store
+tests
+coverage
+postman
+.postman
+.github
+jest*.cjs
+Dockerfile
+.dockerignore
+*.md
+!legal/*.md

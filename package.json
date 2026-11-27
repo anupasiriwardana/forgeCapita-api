@@ -2,14 +2,22 @@
   "name": "forgecapita-api",
   "version": "1.0.0",
   "description": "The off-chain Express.js REST API for forgeCapita serving startup metadata and merging it with Ponder's on-chain data via a shared PostgreSQL database.",
-  "main": "src/index.ts",
+  "type": "module",
+  "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
     "migrate": "tsx src/db/migrate.ts up",
     "migrate:status": "tsx src/db/migrate.ts status",
+    "migrate:prod": "node dist/db/migrate.js up",
+    "migrate:status:prod": "node dist/db/migrate.js status",
     "typecheck": "node scripts/typecheck.mjs",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --forceExit",
     "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.integration.config.cjs --runInBand --forceExit"
+  },
+  "engines": {
+    "node": ">=22 <23"
   },
   "keywords": [],
   "author": "",

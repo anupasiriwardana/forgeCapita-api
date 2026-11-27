@@ -3,8 +3,8 @@ import { join } from "node:path";
 import pino, { type DestinationStream, type LoggerOptions } from "pino";
 import { config } from "./config/env.js";
 
-// Resolve relative to the working directory (avoids import.meta, which differs
-// between the tsx CJS runtime and the ESM test runtime).
+// ESM has no global `require`; resolve optional packages relative to the working
+// directory, which is the package root under tsx, Jest and `node dist/index.js` alike.
 const requireFromCwd = createRequire(join(process.cwd(), "noop.js"));
 
 export const REDACT_PATHS: string[] = [
